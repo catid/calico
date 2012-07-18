@@ -188,6 +188,8 @@ void ChaChaVMAC::Encrypt(u64 iv, const void *from, void *to, int bytes)
 		overhead[0] = getLE((u32)mac ^ mac_keystream[0]);
 		overhead[1] = getLE((u32)(mac >> 32) ^ mac_keystream[1]);
 	}
+
+	CAT_SECURE_OBJCLR(x);
 }
 
 bool ChaChaVMAC::Decrypt(u64 iv, void *buffer, int bytes)
@@ -217,7 +219,11 @@ bool ChaChaVMAC::Decrypt(u64 iv, void *buffer, int bytes)
 		delta |= getLE(overhead[1]) ^ (u32)(mac >> 32) ^ mac_keystream[1];
 
 		if (delta != 0)
+		{
+			CAT_SECURE_OBJCLR(x);
+
 			return false;
+		}
 	}
 
 	// Decrypt the data:
@@ -277,6 +283,8 @@ bool ChaChaVMAC::Decrypt(u64 iv, void *buffer, int bytes)
 			}
 		}
 	}
+
+	CAT_SECURE_OBJCLR(x);
 
 	return true;
 }

@@ -78,6 +78,8 @@ int Calico::Initialize(const void *key,				// Pointer to key material
 
 	_initialized = true;
 
+	CAT_SECURE_OBJCLR(keys);
+
 	return ERR_GROOVY;
 }
 
