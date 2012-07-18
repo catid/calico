@@ -15,8 +15,6 @@
  *
  * Not thread-safe.  Do not share a Calico object between threads without
  * using a full memory barrier.
- *
- * See AuthenticatedEncryption.hpp for more details.
 */
 
 namespace cat {
@@ -133,7 +131,7 @@ public:
 	 *  ciphertext_bytes: Output buffer size
 	 *
 	 * Returns the number of bytes of encrypted data,
-	 * or returns a number less than or equal to zero to indicate an error.
+	 * or returns a number less than zero to indicate an error.
 	 *
 	 * ERR_BAD_STATE = Initialize() must be called first
 	 * ERR_BAD_INPUT = Parameters are invalid
@@ -155,7 +153,7 @@ public:
 	 *  ciphertext_bytes: Number of valid encrypted data bytes
 	 *
 	 * Returns the number of bytes of plaintext data,
-	 * or returns a number less than or equal to zero to indicate an error.
+	 * or returns a number less than zero to indicate an error.
 	 *
 	 * ERR_BAD_STATE = Initialize() must be called first
 	 * ERR_TOO_SMALL = Too few data bytes to cover the overhead
