@@ -122,8 +122,10 @@ not portable.  Watch this space; I may decide to release key agreement as a
 separate library and try to make it portable.
 
 
-Tester Output
-=============
+Unit Testing
+============
+The unit tests all pass valgrind.  Here's a run without valgrind:
+
      $ ./tester
     Running test 0 : Uninitialized
     +++ Test passed.
