@@ -426,7 +426,7 @@ void StressTest()
 		if (y.Initialize(key, "Stress Test", RESPONDER) != ERR_GROOVY)
 			throw "Unable to initialize y";
 
-		u32 *data_ptr = reinterpret_cast<u32*>( data );
+		u32 *data_ptr = reinterpret_cast<u32*>( orig );
 
 		for (int messages = 0; messages < 1000; ++messages)
 		{
