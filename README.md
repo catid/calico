@@ -126,62 +126,64 @@ Unit Testing
 ============
 The unit tests all pass valgrind.  Here's a run without valgrind:
 
-     $ ./tester
     Running test 0 : Uninitialized
     +++ Test passed.
 
     Running test 1 : Data Integrity
     +++ Test passed.
 
-    Running test 2 : Wrong Key
+    Running test 2 : Integer Overflow Input
     +++ Test passed.
 
-    Running test 3 : Replay Attack
+    Running test 3 : Wrong Key
     +++ Test passed.
 
-    Running test 4 : Replay Window
+    Running test 4 : Replay Attack
     +++ Test passed.
 
-    Running test 5 : Benchmark Initialize()
-    Benchmark: Initialize() in 3.38141 usec on average / 295735 per second
+    Running test 5 : Replay Window
     +++ Test passed.
 
-    Running test 6 : Benchmark Encrypt()
-    Benchmark: Encrypt() 10000 bytes in 16.0811 usec on average / 621.847 MBPS / 62184.7 per second
-    Benchmark: Encrypt() 1000 bytes in 1.64204 usec on average / 608.999 MBPS / 608999 per second
-    Benchmark: Encrypt() 100 bytes in 0.2316 usec on average / 431.779 MBPS / 4.31779e+06 per second
-    Benchmark: Encrypt() 10 bytes in 0.13549 usec on average / 73.8062 MBPS / 7.38062e+06 per second
-    Benchmark: Encrypt() 1 bytes in 0.13842 usec on average / 7.22439 MBPS / 7.22439e+06 per second
+    Running test 6 : Benchmark Initialize()
+    Benchmark: Initialize() in 4.54089 usec on average / 220221 per second
     +++ Test passed.
 
-    Running test 7 : Benchmark Decrypt() Rejection
-    Benchmark: Decrypt() drops 10000 corrupted bytes in 1.35998 usec on average / 7353.05 MBPS / 735305 per second
-    Benchmark: Decrypt() drops 1000 corrupted bytes in 0.25143 usec on average / 3977.25 MBPS / 3.97725e+06 per second
-    Benchmark: Decrypt() drops 100 corrupted bytes in 0.15385 usec on average / 649.984 MBPS / 6.49984e+06 per second
-    Benchmark: Decrypt() drops 10 corrupted bytes in 0.13845 usec on average / 72.2282 MBPS / 7.22282e+06 per second
-    Benchmark: Decrypt() drops 1 corrupted bytes in 0.13805 usec on average / 7.24375 MBPS / 7.24375e+06 per second
+    Running test 7 : Benchmark Encrypt()
+    Benchmark: Encrypt() 10000 bytes in 20.2912 usec on average / 492.824 MBPS / 49282.4 per second
+    Benchmark: Encrypt() 1000 bytes in 2.12911 usec on average / 469.68 MBPS / 469680 per second
+    Benchmark: Encrypt() 100 bytes in 0.33175 usec on average / 301.432 MBPS / 3.01432e+06 per second
+    Benchmark: Encrypt() 10 bytes in 0.19721 usec on average / 50.7074 MBPS / 5.07074e+06 per second
+    Benchmark: Encrypt() 1 bytes in 0.19816 usec on average / 5.04643 MBPS / 5.04643e+06 per second
     +++ Test passed.
 
-    Running test 8 : Benchmark Decrypt() Accept
-    Benchmark: Decrypt() 10000 bytes in 14.9429 usec on average / 669.216 MBPS / 66921.6 per second
-    Benchmark: Decrypt() 1000 bytes in 1.6471 usec on average / 607.128 MBPS / 607128 per second
-    Benchmark: Decrypt() 100 bytes in 0.31462 usec on average / 317.844 MBPS / 3.17844e+06 per second
-    Benchmark: Decrypt() 10 bytes in 0.20617 usec on average / 48.5037 MBPS / 4.85037e+06 per second
-    Benchmark: Decrypt() 1 bytes in 0.20806 usec on average / 4.80631 MBPS / 4.80631e+06 per second
+    Running test 8 : Benchmark Decrypt() Rejection
+    Benchmark: Decrypt() drops 10000 corrupted bytes in 1.76228 usec on average / 5674.47 MBPS / 567447 per second
+    Benchmark: Decrypt() drops 1000 corrupted bytes in 0.3495 usec on average / 2861.23 MBPS / 2.86123e+06 per second
+    Benchmark: Decrypt() drops 100 corrupted bytes in 0.21187 usec on average / 471.988 MBPS / 4.71988e+06 per second
+    Benchmark: Decrypt() drops 10 corrupted bytes in 0.20319 usec on average / 49.215 MBPS / 4.9215e+06 per second
+    Benchmark: Decrypt() drops 1 corrupted bytes in 0.20454 usec on average / 4.88902 MBPS / 4.88902e+06 per second
     +++ Test passed.
 
-    Running test 9 : 2 Million Random Message Stress Test
+    Running test 9 : Benchmark Decrypt() Accept
+    Benchmark: Decrypt() 10000 bytes in 19.3794 usec on average / 516.012 MBPS / 51601.2 per second
+    Benchmark: Decrypt() 1000 bytes in 2.1582 usec on average / 463.349 MBPS / 463349 per second
+    Benchmark: Decrypt() 100 bytes in 0.45164 usec on average / 221.415 MBPS / 2.21415e+06 per second
+    Benchmark: Decrypt() 10 bytes in 0.32348 usec on average / 30.9138 MBPS / 3.09138e+06 per second
+    Benchmark: Decrypt() 1 bytes in 0.31879 usec on average / 3.13686 MBPS / 3.13686e+06 per second
+    +++ Test passed.
+
+    Running test 10 : 2 Million Random Message Stress Test
     +++ Test passed.
 
 
     Test summary:
-    Passed 10 tests of 10
+    Passed 11 tests of 11
 
     All tests passed.
 
 
-Authors
-=======
+Contributors
+============
 
-mrcatid@gmail.com : Christopher A. Taylor
-
+Christopher A. Taylor<mrcatid@gmail.com> : Author
+Sam Hughes<sam@rethinkdb.com> : Fixed integer overflow in the API
