@@ -112,6 +112,9 @@ taken based on the key material).
 
 All implementations are cleanroom versions of public domain algorithms.
 
+TODO: Add test vectors and unit tests for each algorithm to demonstrate that
+these are faithful implementations without failure modes.
+
 
 Discussion
 ==========
