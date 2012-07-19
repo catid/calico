@@ -124,7 +124,7 @@ separate library and try to make it portable.
 
 Unit Testing
 ============
-The unit tests all pass valgrind.  Here's a run without valgrind:
+The unit tests all pass valgrind.  Here's a run without valgrind on a Macbook Air:
 
     Running test 0 : Uninitialized
     +++ Test passed.
