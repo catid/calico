@@ -92,6 +92,40 @@ void DataIntegrityTest()
 }
 
 /*
+ * Test verifying that large integer input to the API will not cause crashes or other issues
+ */
+void IntOverflowTest()
+{
+	char xkey[32] = {0};
+	char ykey[32] = {1};
+
+	Calico x, y;
+
+	if (x.Initialize(xkey, "Integer Overflow", INITIATOR) != ERR_GROOVY)
+		throw "Unable to initialize x";
+
+	if (y.Initialize(ykey, "Integer Overflow", RESPONDER) != ERR_GROOVY)
+		throw "Unable to initialize y";
+
+	char data[32 + Calico::OVERHEAD] = {0};
+
+	for (int data_len = INT_MAX - Calico::OVERHEAD + 1; data_len > 0; ++data_len) {
+		if (x.Encrypt(data, data_len, data, (int)sizeof(data)) != ERR_TOO_SMALL)
+			throw "Encrypt did not reject bad integer input";
+	}
+
+	for (int data_len = INT_MIN; data_len < INT_MIN + Calico::OVERHEAD + 1; ++data_len) {
+		if (x.Encrypt(data, data_len, data, (int)sizeof(data)) != ERR_BAD_INPUT)
+			throw "Encrypt did not reject bad integer input";
+	}
+
+	for (int data_len = INT_MIN; data_len  < INT_MIN + Calico::OVERHEAD + 10; ++data_len) {
+		if (x.Decrypt(data, data_len) != ERR_TOO_SMALL)
+			throw "Decrypt did not reject bad integer input";
+	}
+}
+
+/*
  * Test where each side is using a different key
  */
 void WrongKeyTest()
@@ -485,6 +519,8 @@ TestDescriptor TEST_FUNCTIONS[] = {
 	{ UninitializedTest, "Uninitialized" },
 
 	{ DataIntegrityTest, "Data Integrity" },
+
+	{ IntOverflowTest, "Integer Overflow Input" },
 
 	{ WrongKeyTest, "Wrong Key" },
 	{ ReplayAttackTest, "Replay Attack" },

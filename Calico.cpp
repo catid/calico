@@ -5,6 +5,8 @@
 using namespace cat;
 using namespace calico;
 
+#include <climits>
+
 // IV constants
 static const int IV_BYTES = 3;
 static const int IV_BITS = IV_BYTES * 8;
@@ -92,6 +94,8 @@ int Calico::Encrypt(const void *plaintext,	// Pointer to input plaintext
 		return ERR_BAD_STATE;
 	if (!plaintext || plaintext_bytes < 0 || !ciphertext)
 		return ERR_BAD_INPUT;
+	if (plaintext_bytes > INT_MAX - OVERHEAD)
+		return ERR_TOO_SMALL;
 	if (plaintext_bytes + OVERHEAD > ciphertext_bytes)
 		return ERR_TOO_SMALL;
 
@@ -124,6 +128,8 @@ int Calico::Decrypt(void *ciphertext,		// Pointer to ciphertext
 		return ERR_BAD_STATE;
 	if (!ciphertext)
 		return ERR_BAD_INPUT;
+	if (ciphertext_bytes < INT_MIN + OVERHEAD)
+		return ERR_TOO_SMALL;
 
 	int plaintext_bytes = ciphertext_bytes - OVERHEAD;
 	if (plaintext_bytes < 0)
