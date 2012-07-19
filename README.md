@@ -185,5 +185,5 @@ The unit tests all pass valgrind.  Here's a run without valgrind:
 Contributors
 ============
 
-Christopher A. Taylor<mrcatid@gmail.com> : Author
-Sam Hughes<sam@rethinkdb.com> : Fixed integer overflow in the API
+* Christopher A. Taylor<mrcatid@gmail.com> : Author
+* Sam Hughes<sam@rethinkdb.com> : Fixed integer overflow in the API
