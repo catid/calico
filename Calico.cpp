@@ -1,5 +1,5 @@
 #include "Calico.hpp"
-#include "Skein.hpp"
+#include "blake2/ref/blake2.h"
 #include "EndianNeutral.hpp"
 #include "BitMath.hpp"
 using namespace cat;
@@ -39,6 +39,50 @@ Calico::Calico()
 	_initialized = false;
 }
 
+// Generate 400 bytes of key material from 64 byte key using ChaCha
+static void expandKey(const u8 key[64], u8 keys[400]) {
+	const u32 *in = reinterpret_cast<const u32 *>( key );
+	u32 *out = reinterpret_cast<u32 *>( keys );
+
+	// First 64 bytes of key can be copied directly
+	memcpy(keys, key, 64);
+
+	// Initialize registers
+	register u32 x[16];
+	for (int ii = 0; ii < 16; ++ii) x[ii] = in[ii];
+
+	// Output of simplified ChaCha function is iterated for the rest:
+
+	CHACHA_MIX();
+	for (int ii = 0; ii < 16; ++ii) x[ii] += in[ii];
+	memcpy(keys + 64, x, 64);
+
+	x[0] ^= 1;
+	CHACHA_MIX();
+	for (int ii = 0; ii < 16; ++ii) x[ii] += in[ii];
+	memcpy(keys + 128, x, 64);
+
+	x[0] ^= 2;
+	CHACHA_MIX();
+	for (int ii = 0; ii < 16; ++ii) x[ii] += in[ii];
+	memcpy(keys + 192, x, 64);
+
+	x[0] ^= 3;
+	CHACHA_MIX();
+	for (int ii = 0; ii < 16; ++ii) x[ii] += in[ii];
+	memcpy(keys + 256, x, 64);
+
+	x[0] ^= 4;
+	CHACHA_MIX();
+	for (int ii = 0; ii < 16; ++ii) x[ii] += in[ii];
+	memcpy(keys + 320, x, 64);
+
+	x[0] ^= 5;
+	CHACHA_MIX();
+	for (int ii = 0; ii < 4; ++ii) x[ii] += in[ii];
+	memcpy(keys + 384, x, 16);
+}
+
 int Calico::Initialize(const void *key,				// Pointer to key material
 					   const char *session_name,	// Unique session name
 					   int mode)					// Value from CalicoModes
@@ -50,18 +94,14 @@ int Calico::Initialize(const void *key,				// Pointer to key material
 	if (mode < INITIATOR || mode > RESPONDER)
 		return ERR_BAD_INPUT;
 
-	Skein key_hash, kdf;
+	// Derive a key from given key and session name
+	u8 derived_key[64];
+	if (0 != blake2b(derived_key, session_name, key, 64, strlen(session_name), 32))
+		return ERR_INTERNAL;
 
-	// Initialize the key from the input key and the session name
-	if (!key_hash.BeginKey(256)) return ERR_INTERNAL;
-	if (!key_hash.BeginKDF()) return ERR_INTERNAL;
-	key_hash.Crunch(key, 32);
-	key_hash.CrunchString(session_name);
-	key_hash.End();
-
-	// Generate subkeys using KDF mode of Skein
+	// Expand derived key using ChaCha function
 	u8 keys[200 + 200];
-	key_hash.Generate(keys, (int)sizeof(keys));
+	expandKey(derived_key, keys);
 
 	// Swap keys based on mode
 	u8 *lkey = keys, *rkey = keys;

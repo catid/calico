@@ -42,7 +42,9 @@ from years of experience writing these sorts of libraries.
 Benchmarks
 ==========
 
-    Mac OS X 10.7.4 (2.7 GHz Intel Core i5) 
+Mac OS X 10.7.4 (2.7 GHz Intel Core i5)
+
+~~~
      $ uname -a
     Darwin kuang.local 11.4.0 Darwin Kernel Version 11.4.0: Mon Apr  9 19:32:15 PDT 2012; root:xnu-1699.26.8~1/RELEASE_X86_64 x86_64
     $ clang++ --version
@@ -69,10 +71,13 @@ Benchmarks
     Benchmark: Decrypt() 100 bytes in 0.31462 usec on average / 317.844 MBPS / 3.17844e+06 per second
     Benchmark: Decrypt() 10 bytes in 0.20617 usec on average / 48.5037 MBPS / 4.85037e+06 per second
     Benchmark: Decrypt() 1 bytes in 0.20806 usec on average / 4.80631 MBPS / 4.80631e+06 per second
+~~~
 
 
 Getting Started
 ===============
+
+The BLAKE2 code is referenced as a submodule, so run `git submodule update --init` to download the BLAKE2 code also.
 
 The API has three functions:
 
@@ -100,10 +105,10 @@ See the Example.cpp source file for basic usage.
 Cryptographic Primitives
 ========================
 
-256-bit Skein in KDF mode is used to key 8-round VMAC-ChaCha,
+512-bit BLAKE2 is used to key 8-round VMAC-ChaCha,
 and an anti-replay window provides replay protection.
 
-+ Skein: Full 256-bit version used as a key derivation function.
++ BLAKE2: Full 512-bit version used as a key derivation function.
 + VMAC: Fast; a 64-bit message authentication code.
 + ChaCha: 8 rounds for less security margin and higher speed.
 
@@ -112,23 +117,12 @@ taken based on the key material).
 
 All implementations are cleanroom versions of public domain algorithms.
 
-TODO: Add test vectors and unit tests for each algorithm to demonstrate that
-these are faithful implementations without failure modes.
-
-
-Discussion
-==========
-
-To use this effectively there needs to be a good key agreement protocol to
-go along with it.  I have written several over the years, but my libraries are
-not portable.  Watch this space; I may decide to release key agreement as a
-separate library and try to make it portable.
-
 
 Unit Testing
 ============
 The unit tests all pass valgrind.  Here's a run without valgrind on a Macbook Air:
 
+~~~
     Running test 0 : Uninitialized
     +++ Test passed.
 
@@ -183,6 +177,7 @@ The unit tests all pass valgrind.  Here's a run without valgrind on a Macbook Ai
     Passed 11 tests of 11
 
     All tests passed.
+~~~
 
 
 Contributors
@@ -190,3 +185,4 @@ Contributors
 
 * Christopher A. Taylor ( mrcatid@gmail.com ) : Author
 * Sam Hughes ( sam@rethinkdb.com ) : Fixed integer overflow in the API
+

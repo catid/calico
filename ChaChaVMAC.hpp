@@ -41,6 +41,38 @@
 namespace cat {
 
 
+static const int CHACHA_ROUNDS = 8; // Multiple of 2
+
+#define CHACHA_QUARTERROUND(A,B,C,D)					\
+	x[A] += x[B]; x[D] = CAT_ROL32(x[D] ^ x[A], 16);	\
+	x[C] += x[D]; x[B] = CAT_ROL32(x[B] ^ x[C], 12);	\
+	x[A] += x[B]; x[D] = CAT_ROL32(x[D] ^ x[A], 8);		\
+	x[C] += x[D]; x[B] = CAT_ROL32(x[B] ^ x[C], 7);
+
+// Mixing function
+#define CHACHA_MIX()	\
+	for (int round = CHACHA_ROUNDS; round > 0; round -= 2) \
+	{										\
+		CHACHA_QUARTERROUND(0, 4, 8,  12)	\
+		CHACHA_QUARTERROUND(1, 5, 9,  13)	\
+		CHACHA_QUARTERROUND(2, 6, 10, 14)	\
+		CHACHA_QUARTERROUND(3, 7, 11, 15)	\
+		CHACHA_QUARTERROUND(0, 5, 10, 15)	\
+		CHACHA_QUARTERROUND(1, 6, 11, 12)	\
+		CHACHA_QUARTERROUND(2, 7, 8,  13)	\
+		CHACHA_QUARTERROUND(3, 4, 9,  14)	\
+	}
+
+// Copy state into registers
+#define CHACHA_COPY(state)					\
+	state[12] = (u32)block_counter;			\
+	state[13] = (u32)(block_counter >> 32);	\
+	state[14] = (u32)iv;					\
+	state[15] = (u32)(iv >> 32);			\
+	for (int ii = 0; ii < 16; ++ii)			\
+		x[ii] = state[ii];
+
+
 class CAT_EXPORT ChaChaVMAC
 {
 	u32 _e_state[16], _d_state[16];

@@ -11,8 +11,10 @@ endif
 
 # List of object files to make
 
+blake2_o = blake2b-ref.o
+
 ae_objects = AntiReplayWindow.o BitMath.o Calico.o ChaChaVMAC.o \
-			 EndianNeutral.o Skein.o Skein256.o VHash.o
+			 EndianNeutral.o VHash.o $(blake2_o)
 
 tester_objects = Tester.o Clock.o $(ae_objects)
 
@@ -40,6 +42,12 @@ Tester.o : tests/Tester.cpp
 	$(CC) $(CFLAGS) -c tests/Tester.cpp
 
 
+# Blake2 files
+
+blake2b-ref.o : blake2/ref/blake2b-ref.c
+	$(CC) $(CFLAGS) -c blake2/ref/blake2b-ref.c
+
+
 # Library files
 
 AntiReplayWindow.o : AntiReplayWindow.cpp
@@ -56,12 +64,6 @@ ChaChaVMAC.o : ChaChaVMAC.cpp
 
 EndianNeutral.o : EndianNeutral.cpp
 	$(CC) $(CFLAGS) -c EndianNeutral.cpp
-
-Skein.o : Skein.cpp
-	$(CC) $(CFLAGS) -c Skein.cpp
-
-Skein256.o : Skein256.cpp
-	$(CC) $(CFLAGS) -c Skein256.cpp
 
 VHash.o : VHash.cpp
 	$(CC) $(CFLAGS) -c VHash.cpp
