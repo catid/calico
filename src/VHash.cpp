@@ -176,52 +176,47 @@ static u64 Level3Hash(u64 p_hi, u64 p_lo, u64 k_hi, u64 k_lo, u64 len)
 	return r_lo;
 }
 
-
-//// VHash
-
-VHash::~VHash()
-{
-	CAT_SECURE_OBJCLR(_nhkey);
-	CAT_SECURE_OBJCLR(_polykey);
-	CAT_SECURE_OBJCLR(_l3key);
-}
-
-void VHash::SetKey(const u8 key[160])
-{
-	memcpy(_nhkey, key, sizeof(_nhkey));
-	memcpy(_polykey, key + sizeof(_nhkey), sizeof(_polykey));
-	memcpy(_l3key, key + sizeof(_nhkey) + sizeof(_polykey), sizeof(_l3key));
-
+/*
+ * Initialize the VHash session
+ *
+ * The state should already be filled with 160 bytes of key material
+ *
+ * This function will handle tweaking the input to work as a VHash state
+ */
+void cat::vhash_set_key(vhash_state *S) {
 #if !defined(CAT_ENDIAN_LITTLE)
 	// Fix byte order
-	for (int ii = 0; ii < NH_KEY_WORDS; ++ii)
-		swapLE(_nhkey[ii]);
-	swapLE(_polykey[0]);
-	swapLE(_polykey[1]);
-	swapLE(_l3key[0]);
-	swapLE(_l3key[1]);
+	for (int ii = 0; ii < vhash_state::WORDS; ++ii)
+		swapLE(S->nhkey[ii]);
+	swapLE(S->polykey[0]);
+	swapLE(S->polykey[1]);
+	swapLE(S->l3key[0]);
+	swapLE(S->l3key[1]);
 #endif
 
 	// Mask poly key
-	_polykey[0] &= mpoly;
-	_polykey[1] &= mpoly;
+	S->polykey[0] &= mpoly;
+	S->polykey[1] &= mpoly;
 }
 
-u64 VHash::Hash(const void *vdata, int bytes)
-{
-	const u64 *data = reinterpret_cast<const u64*>( vdata );
-	int blocks = bytes / NHBYTES, remains = bytes % NHBYTES;
+/*
+ * Hashes the given data with the current VHash state
+ */
+u64 cat::vhash(vhash_state *S, const void *vdata, int bytes) {
+	const u64 *data = reinterpret_cast<const u64 *>( vdata );
+	int blocks = bytes / vhash_state::NHBYTES;
+	int remains = bytes % vhash_state::NHBYTES;
 
 	u64 c_hi, c_lo;
 
 	// Unroll first loop to avoid PolyStep()
 	if (blocks > 0)
 	{
-		NH512(data, _nhkey, NH_KEY_WORDS, c_hi, c_lo);
+		NH512(data, _nhkey, vhash_state::WORDS, c_hi, c_lo);
 		c_hi &= m62;
 		CAT_ADD128(c_hi, c_lo, _polykey[0], _polykey[1]);
 
-		data += NH_KEY_WORDS;
+		data += vhash_state::WORDS;
 		--blocks;
 	}
 	else
@@ -229,9 +224,9 @@ u64 VHash::Hash(const void *vdata, int bytes)
 		if (remains)
 		{
 			// Copy to temporary location
-			u64 temp[NHBYTES];
+			u64 temp[vhash_state::WORDS];
 			memcpy(temp, data, remains);
-			memset((u8*)temp + remains, 0, NHBYTES - remains);
+			memset((u8 *)temp + remains, 0, vhash_state::BYTES - remains);
 
 			const int data_words = 2 * CAT_CEIL_UNIT(remains, 16);
 			NH128(temp, _nhkey, data_words, c_hi, c_lo);
@@ -251,21 +246,21 @@ u64 VHash::Hash(const void *vdata, int bytes)
 	while (blocks-- > 0)
 	{
 		u64 r_hi, r_lo;
-		NH512(data, _nhkey, NH_KEY_WORDS, r_hi, r_lo);
+		NH512(data, _nhkey, vhash_state::WORDS, r_hi, r_lo);
 		r_hi &= m62;
 
 		PolyStep(c_hi, c_lo, _polykey[0], _polykey[1], r_hi, r_lo);
 
-		data += NH_KEY_WORDS;
+		data += vhash_state::WORDS;
 	}
 
 	// If any data remains,
 	if (remains)
 	{
 		// Copy to temporary location
-		u64 temp[NHBYTES];
+		u64 temp[vhash_state::WORDS];
 		memcpy(temp, data, remains);
-		memset((u8*)temp + remains, 0, NHBYTES - remains);
+		memset((u8 *)temp + remains, 0, NHBYTES - remains);
 
 		u64 r_hi, r_lo;
 		const int data_words = 2 * CAT_CEIL_UNIT(remains, 16);

@@ -48,8 +48,7 @@ extern int _calico_init(int expected_version);
 #define calico_init() _calico_init(CALICO_VERSION)
 
 typedef struct {
-	// TODO
-	char internal[64];
+	char internal[160 + 160 + 8 + 8 + 128 + 32 + 32];
 } calico_state;
 
 enum CalicoRoles {

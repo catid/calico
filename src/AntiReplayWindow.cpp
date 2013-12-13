@@ -29,47 +29,45 @@
 #include "AntiReplayWindow.hpp"
 using namespace cat;
 
-void AntiReplayWindow::Initialize(u64 local_iv, u64 remote_iv)
-{
-	_local = local_iv;
-	_remote = remote_iv;
+void cat::antireplay_init(antireplay_state *S, u64 local_iv, u64 remote_iv) {
+	S->local = local_iv;
+	S->remote = remote_iv;
 
-	CAT_OBJCLR(_bitmap);
+	CAT_OBJCLR(S->bitmap);
 }
 
-bool AntiReplayWindow::Validate(u64 iv)
-{
+bool cat::antireplay_check(antireplay_state *S, u64 remote_iv) {
 	// Check how far in the past this IV is
-	int delta = (int)(_remote - iv);
+	int delta = (int)(S->remote - iv);
 
 	// If it is in the past,
 	if (delta >= 0)
 	{
 		// Check if we have kept a record for this IV
-		if (delta >= BITMAP_BITS) return false;
+		if (delta >= antireplay_state::BITMAP_BITS) return false;
 
 		// If it was seen, abort
 		const u64 mask = (u64)1 << (delta & 63);
-		if (_bitmap[delta >> 6] & mask) return false;
+		if (S->bitmap[delta >> 6] & mask) return false;
 	}
 
 	return true;
 }
 
-void AntiReplayWindow::Accept(u64 iv)
-{
+void cat::antireplay_accept(antireplay_state *S, u64 remote_iv) {
 	// Check how far in the past/future this IV is
-	int delta = (int)(iv - _remote);
+	int delta = (int)(iv - S->remote);
+	u64 *bitmap = S->bitmap;
 
 	// If it is in the future,
 	if (delta > 0)
 	{
 		// If it would shift out everything we have seen,
-		if (delta >= BITMAP_BITS)
+		if (delta >= antireplay_state::BITMAP_BITS)
 		{
 			// Set low bit to 1 and all other bits to 0
-			_bitmap[0] = 1;
-			CAT_CLR(&_bitmap[1], sizeof(_bitmap) - sizeof(u64));
+			bitmap[0] = 1;
+			CAT_CLR(&bitmap[1], sizeof(S->bitmap) - sizeof(u64));
 		}
 		else
 		{
@@ -79,37 +77,38 @@ void AntiReplayWindow::Accept(u64 iv)
 			// Shift replay window
 			if (bit_shift > 0)
 			{
-				u64 last = _bitmap[BITMAP_WORDS - 1 - word_shift];
-				for (int ii = BITMAP_WORDS - 1; ii >= word_shift + 1; --ii)
+				u64 last = bitmap[antireplay_state::BITMAP_WORDS - 1 - word_shift];
+				for (int ii = antireplay_state::BITMAP_WORDS - 1; ii >= word_shift + 1; --ii)
 				{
-					u64 x = _bitmap[ii - word_shift - 1];
-					_bitmap[ii] = (last << bit_shift) | (x >> (64-bit_shift));
+					u64 x = bitmap[ii - word_shift - 1];
+					bitmap[ii] = (last << bit_shift) | (x >> (64 - bit_shift));
 					last = x;
 				}
-				_bitmap[word_shift] = last << bit_shift;
+				bitmap[word_shift] = last << bit_shift;
 			}
 			else
 			{
-				for (int ii = BITMAP_WORDS - 1; ii >= word_shift; --ii)
-					_bitmap[ii] = _bitmap[ii - word_shift];
+				for (int ii = antireplay_state::BITMAP_WORDS - 1; ii >= word_shift; --ii)
+					bitmap[ii] = bitmap[ii - word_shift];
 			}
 
 			// Zero the words we skipped
 			for (int ii = 0; ii < word_shift; ++ii)
-				_bitmap[ii] = 0;
+				bitmap[ii] = 0;
 
 			// Set low bit for this IV
-			_bitmap[0] |= 1;
+			bitmap[0] |= 1;
 		}
 
 		// Only update the IV if the MAC was valid and the new IV is in the future
-		_remote = iv;
+		S->remote = iv;
 	}
 	else // Process an out-of-order packet
 	{
 		delta = -delta;
 
 		// Set the bit in the bitmap for this IV
-		_bitmap[delta >> 6] |= (u64)1 << (delta & 63);
+		bitmap[delta >> 6] |= (u64)1 << (delta & 63);
 	}
 }
+

@@ -31,6 +31,7 @@
 #include "chacha.h"
 
 #include "Platform.hpp"
+#include "VHash.hpp"
 using namespace cat;
 
 
@@ -42,6 +43,13 @@ static const u32 IV_MASK = (IV_MSB - 1);
 static const u32 IV_FUZZ = 0x9F286AD7;
 
 
+typedef struct {
+	vhash_state local_hash, remote_hash;
+	antireplay_state window;
+	u8 local_key[32], remote_key[32];
+} calico_internal_state;
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -51,6 +59,8 @@ int _calico_init(int expected_version) {
 }
 
 int calico_create(calico_state *S, int role, const char key[32]) {
+	calico_internal_state *state = (calico_internal_state *)S;
+
 	if (role != CALICO_INITIATOR && role != CALICO_RESPONDER) {
 		return -1;
 	}
@@ -64,25 +74,32 @@ int calico_create(calico_state *S, int role, const char key[32]) {
 	chacha_iv iv;
 	CAT_OBJCLR(iv);
 
-	u8 expanded_key[400];
-	CAT_OBJCLR(expanded_key);
+	u8 keys[400];
+	CAT_OBJCLR(keys);
 
-	chacha((const chacha_key *)key, &iv, expanded_key, expanded_key, sizeof(expanded_key), 20);
+	chacha((const chacha_key *)key, &iv, keys, keys, sizeof(keys), 20);
 
 	// Swap keys based on mode
 	u8 *lkey = keys, *rkey = keys;
 	if (role == CALICO_INITIATOR) lkey += 200;
 	else rkey += 200;
 
-	// Initialize the cipher with these keys
-	_cipher.Initialize(lkey, rkey);
+	// Initialize the hash
+	memcpy(&state->local_hash, lkey, 160);
+	memcpy(&state->remote_hash, rkey, 160);
+	vhash_set_key(&state->local_hash);
+	vhash_set_key(&state->remote_hash);
+
+	// Initialize the cipher
+	memcpy(state->local_key, lkey + 160, 32);
+	memcpy(state->remote_key, rkey + 160, 32);
 
 	// Grab the IVs from the key bytes
 	u64 liv = getLE(*(u64*)(lkey + 192));
 	u64 riv = getLE(*(u64*)(rkey + 192));
 
 	// Initialize the IV subsystem
-	_window.Initialize(liv, riv);
+	antireplay_init(&state->window, liv, riv);
 
 	CAT_SECURE_OBJCLR(keys);
 
@@ -122,91 +139,6 @@ int calico_cleanup(calico_state *S) {
 
 
 
-#include "Calico.hpp"
-#include "blake2/ref/blake2.h"
-#include "EndianNeutral.hpp"
-#include "BitMath.hpp"
-using namespace cat;
-using namespace calico;
-
-#include <climits>
-
-// IV constants
-static const int IV_BYTES = 3;
-static const int IV_BITS = IV_BYTES * 8;
-static const u32 IV_MSB = (1 << IV_BITS);
-static const u32 IV_MASK = (IV_MSB - 1);
-static const u32 IV_FUZZ = 0x9F286AD7;
-
-
-//// Calico
-
-const char *Calico::GetErrorString(int error_code)
-{
-	if (error_code >= ERR_GROOVY)
-		return "No error";
-
-	switch (error_code)
-	{
-	case ERR_BAD_STATE: return "Bad state";
-	case ERR_BAD_INPUT: return "Bad input";
-	case ERR_INTERNAL:	return "Internal error";
-	case ERR_TOO_SMALL: return "Too small";
-	case ERR_IV_DROP:	return "IV-based drop";
-	case ERR_MAC_DROP:	return "MAC-based drop";
-	default:			return "Unknown";
-	}
-}
-
-Calico::Calico()
-{
-	_initialized = false;
-}
-
-// Generate 400 bytes of key material from 64 byte key using ChaCha
-static void expandKey(const u8 key[64], u8 keys[400]) {
-	const u32 *in = reinterpret_cast<const u32 *>( key );
-	u32 *out = reinterpret_cast<u32 *>( keys );
-
-	// First 64 bytes of key can be copied directly
-	memcpy(keys, key, 64);
-
-	// Initialize registers
-	register u32 x[16];
-	for (int ii = 0; ii < 16; ++ii) x[ii] = in[ii];
-
-	// Output of simplified ChaCha function is iterated for the rest:
-
-	CHACHA_MIX();
-	for (int ii = 0; ii < 16; ++ii) x[ii] += in[ii];
-	memcpy(keys + 64, x, 64);
-
-	x[0] ^= 1;
-	CHACHA_MIX();
-	for (int ii = 0; ii < 16; ++ii) x[ii] += in[ii];
-	memcpy(keys + 128, x, 64);
-
-	x[0] ^= 2;
-	CHACHA_MIX();
-	for (int ii = 0; ii < 16; ++ii) x[ii] += in[ii];
-	memcpy(keys + 192, x, 64);
-
-	x[0] ^= 3;
-	CHACHA_MIX();
-	for (int ii = 0; ii < 16; ++ii) x[ii] += in[ii];
-	memcpy(keys + 256, x, 64);
-
-	x[0] ^= 4;
-	CHACHA_MIX();
-	for (int ii = 0; ii < 16; ++ii) x[ii] += in[ii];
-	memcpy(keys + 320, x, 64);
-
-	x[0] ^= 5;
-	CHACHA_MIX();
-	for (int ii = 0; ii < 4; ++ii) x[ii] += in[ii];
-	memcpy(keys + 384, x, 16);
-}
-
 int Calico::Initialize(const void *key,				// Pointer to key material
 					   const char *session_name,	// Unique session name
 					   int mode)					// Value from CalicoModes
@@ -229,7 +161,7 @@ int Calico::Initialize(const void *key,				// Pointer to key material
 
 	// Swap keys based on mode
 	u8 *lkey = keys, *rkey = keys;
-	if (mode == INITIATOR) lkey += 200;
+	if (mode == CALICO_INITIATOR) lkey += 200;
 	else rkey += 200;
 
 	// Initialize the cipher with these keys

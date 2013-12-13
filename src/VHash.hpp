@@ -33,8 +33,7 @@
 
 /*
 	Mostly copied from the original VHASH implementation
-	by Ted Krovetz (tdk@acm.org) and Wei Dai
-	Last modified: 17 APR 08, 1700 PDT
+	by Ted Krovetz (tdk@acm.org) and Wei Dai from 17 APR 08, 1700 PDT
 
 	References:
 
@@ -45,25 +44,31 @@
 namespace cat {
 
 
-class CAT_EXPORT VHash
-{
-	static const int NHBYTES = 128;
-	static const int NH_KEY_WORDS = NHBYTES / 8; // 16
+// VHash internal state
+typedef struct {
+	static const int BYTES = 128;
+	static const int WORDS = BYTES / 8; // 16
 
-	u64 _nhkey[NH_KEY_WORDS];
-	u64 _polykey[2];
-	u64 _l3key[2];
+	u64 nhkey[WORDS];
+	u64 polykey[2];
+	u64 l3key[2];
+} vhash_state;
 
-public:
-	// Securely wipes memory
-	~VHash();
+/*
+ * Initialize the VHash session
+ *
+ * The state should already be filled with 160 bytes of key material
+ *
+ * This function will handle tweaking the input to work as a VHash state
+ *
+ * When done with the vhash_state object, it should be securely erased
+ */
+void vhash_set_key(vhash_state *S);
 
-	// Initialize using a large 160 byte random key
-	void SetKey(const u8 key[160]); // 160 = 128 + 16 + 16
-
-	// Hash data into 8 bytes
-	u64 Hash(const void *data, int bytes);
-};
+/*
+ * Hashes the given data with the current VHash state
+ */
+u64 vhash(vhash_state *S, const void *data, int bytes);
 
 
 } // namespace cat

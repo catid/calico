@@ -34,28 +34,22 @@
 namespace cat {
 
 
-class CAT_EXPORT AntiReplayWindow
-{
-	u64 _local, _remote;
-
-	// Anti-replay sliding window
+typedef struct {
 	static const int BITMAP_BITS = 1024; // Good for file transfer rates
 	static const int BITMAP_WORDS = BITMAP_BITS / 64;
-	u64 _bitmap[BITMAP_WORDS];
 
-public:
-	void Initialize(u64 local_iv, u64 remote_iv);
+	u64 local, remote;
 
-	bool Validate(u64 iv);
-	void Accept(u64 iv);
+	// Anti-replay sliding window
+	u64 bitmap[BITMAP_WORDS];
+} antireplay_state;
 
-	CAT_INLINE u64 NextLocal() { return _local++; }
 
-	// NOTE: This one is reserved for stream mode
-	CAT_INLINE u64 NextRemote() { return _remote++; }
+void antireplay_init(antireplay_state *S, u64 local_iv, u64 remote_iv);
 
-	CAT_INLINE u64 LastAccepted() { return _remote; }
-};
+bool antireplay_check(antireplay_state *S, u64 remote_iv);
+
+void antireplay_accept(antireplay_state *S, u64 remote_iv);
 
 
 } // namespace cat
