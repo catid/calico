@@ -1,79 +1,110 @@
 # Change your compiler settings here
 
-CC = clang++
-
-ifeq ($(CALICO_DEBUG),1)
-CFLAGS = -g -O0 -I. -v
-else
-CFLAGS = -O4 -I. -v
-endif
-
-
-# List of object files to make
-
-blake2_o = blake2b-ref.o
-
-ae_objects = AntiReplayWindow.o BitMath.o Calico.o ChaChaVMAC.o \
-			 EndianNeutral.o VHash.o $(blake2_o)
-
-tester_objects = Tester.o Clock.o $(ae_objects)
-
-example_objects = Example.o $(ae_objects)
+# Clang seems to produce faster code
+#CCPP = g++
+#CC = gcc
+#OPTFLAGS = -O3 -fomit-frame-pointer -funroll-loops
+CCPP = clang++ -m64
+CC = clang -m64
+OPTFLAGS = -O3
+DBGFLAGS = -g -O0 -DDEBUG
+CFLAGS = -Wall -fstrict-aliasing -I./blake2/sse -I./chacha-opt -I./libcat -I./include \
+		 -Dchacha_blocks_impl=chacha_blocks_ssse3 -Dhchacha_impl=hchacha
+LIBNAME = libcalico.a
+LIBS =
 
 
-# Applications
+# Object files
 
-example : $(example_objects)
-	$(CC) -o example $(example_objects)
+shared_test_o = Clock.o
 
-tester : $(tester_objects)
-	$(CC) -o tester $(tester_objects)
+extern_o = blake2b.o chacha.o chacha_blocks_ssse3-64.o
 
+libcat_o = BitMath.o EndianNeutral.o
 
-# Support files
+calico_o = AntiReplayWindow.o Calico.o ChaChaVMAC.o VHash.o $(libcat_o) $(extern_o)
 
-Example.o : tests/Example.cpp
-	$(CC) $(CFLAGS) -c tests/Example.cpp
-
-Clock.o : tests/Clock.cpp
-	$(CC) $(CFLAGS) -c tests/Clock.cpp
-
-Tester.o : tests/Tester.cpp
-	$(CC) $(CFLAGS) -c tests/Tester.cpp
+calico_test_o = calico_test.o $(shared_test_o)
 
 
-# Blake2 files
+# Release target (default)
 
-blake2b-ref.o : blake2/ref/blake2b-ref.c
-	$(CC) $(CFLAGS) -c blake2/ref/blake2b-ref.c
-
-
-# Library files
-
-AntiReplayWindow.o : AntiReplayWindow.cpp
-	$(CC) $(CFLAGS) -c AntiReplayWindow.cpp
-
-BitMath.o : BitMath.cpp
-	$(CC) $(CFLAGS) -c BitMath.cpp
-
-Calico.o : Calico.cpp
-	$(CC) $(CFLAGS) -c Calico.cpp
-
-ChaChaVMAC.o : ChaChaVMAC.cpp
-	$(CC) $(CFLAGS) -c ChaChaVMAC.cpp
-
-EndianNeutral.o : EndianNeutral.cpp
-	$(CC) $(CFLAGS) -c EndianNeutral.cpp
-
-VHash.o : VHash.cpp
-	$(CC) $(CFLAGS) -c VHash.cpp
+release : CFLAGS += $(OPTFLAGS)
+release : library
 
 
-# Clean target
+# Debug target
+
+debug : CFLAGS += $(DBGFLAGS)
+debug : LIBNAME = libcalico_debug.a
+debug : library
+
+
+# Library target
+
+library : CFLAGS += $(OPTFLAGS)
+library : $(calico_o)
+	ar rcs $(LIBNAME) $(calico_o)
+
+
+# tester executables
+
+test : CFLAGS += -DUNIT_TEST $(OPTFLAGS)
+test : clean $(calico_test_o) library
+	$(CCPP) $(calico_test_o) $(LIBS) -L. -lcalico -o test
+	./test
+
+
+# Shared objects
+
+Clock.o : libcat/Clock.cpp
+	$(CCPP) $(CFLAGS) -c libcat/Clock.cpp
+
+EndianNeutral.o : libcat/EndianNeutral.cpp
+	$(CCPP) $(CFLAGS) -c libcat/EndianNeutral.cpp
+
+BitMath.o : libcat/BitMath.cpp
+	$(CCPP) $(CFLAGS) -c libcat/BitMath.cpp
+
+
+# Library objects
+
+calico.o : src/calico.cpp
+	$(CCPP) $(CFLAGS) -c src/calico.cpp
+
+AntiReplayWindow.o : src/AntiReplayWindow.cpp
+	$(CCPP) $(CFLAGS) -c AntiReplayWindow.cpp
+
+Calico.o : src/Calico.cpp
+	$(CCPP) $(CFLAGS) -c Calico.cpp
+
+ChaChaVMAC.o : src/ChaChaVMAC.cpp
+	$(CCPP) $(CFLAGS) -c ChaChaVMAC.cpp
+
+VHash.o : src/VHash.cpp
+	$(CCPP) $(CFLAGS) -c VHash.cpp
+
+blake2b.o : blake2/sse/blake2b.c
+	$(CC) $(CFLAGS) -c blake2/sse/blake2b.c
+
+chacha.o : chacha-opt/chacha.c
+	$(CC) $(CFLAGS) -c chacha-opt/chacha.c
+
+chacha_blocks_ssse3-64.o : chacha-opt/chacha_blocks_ssse3-64.S
+	$(CC) $(CFLAGS) -c chacha-opt/chacha_blocks_ssse3-64.S
+
+
+# Executable objects
+
+calico_test.o : tests/calico_test.cpp
+	$(CCPP) $(CFLAGS) -c tests/calico_test.cpp
+
+
+# Cleanup
 
 .PHONY : clean
 
 clean :
-	-rm tester $(tester_objects)
-	-rm example $(example_objects)
+	git submodule update --init
+	-rm test libcalico.a $(shared_test_o) $(calico_test_o) $(calico_o)
 

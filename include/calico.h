@@ -50,7 +50,7 @@ extern int _calico_init(int expected_version);
 typedef struct {
 	// TODO
 	char internal[64];
-} CalicoState;
+} calico_state;
 
 enum CalicoRoles {
 	CALICO_INITIATOR = 1,
@@ -64,22 +64,22 @@ enum CalicoOverhead {
 /*
  * TODO
  */
-extern int calico_set_role(CalicoState *S, int role, const void *key, int key_bytes, const void *name, int name_bytes);
+extern int calico_set_role(calico_state *S, int role, const void *key, int key_bytes, const void *name, int name_bytes);
 
 /*
  * TODO
  */
-extern int calico_encrypt(CalicoState *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes);
+extern int calico_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes);
 
 /*
  * TODO
  */
-extern int calico_decrypt(CalicoState *S, void *ciphertext, int *ciphertext_bytes);
+extern int calico_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes);
 
 /*
  * TODO
  */
-extern int calico_cleanup(CalicoState *S);
+extern int calico_cleanup(calico_state *S);
 
 
 #ifdef __cplusplus
