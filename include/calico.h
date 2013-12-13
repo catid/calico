@@ -1,5 +1,5 @@
 /*
-	Copyright (c) 2009-2011 Christopher A. Taylor.  All rights reserved.
+	Copyright (c) 2012-2013 Christopher A. Taylor.  All rights reserved.
 
 	Redistribution and use in source and binary forms, with or without
 	modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@
 	* Redistributions in binary form must reproduce the above copyright notice,
 	  this list of conditions and the following disclaimer in the documentation
 	  and/or other materials provided with the distribution.
-	* Neither the name of LibCat nor the names of its contributors may be used
+	* Neither the name of Calico nor the names of its contributors may be used
 	  to endorse or promote products derived from this software without
 	  specific prior written permission.
 
@@ -26,12 +26,66 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "BitMath.hpp"
-using namespace cat;
+#ifndef CAT_CALICO_H
+#define CAT_CALICO_H
 
-// Used by BSF32 if BitScanForward opcode is not available
-const int cat::MultiplyDeBruijnBitPosition2[32] = 
-{
-	0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 
-	31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define CALICO_VERSION 0
+
+/*
+ * Verify binary compatibility with the Calico API on startup.
+ *
+ * Example:
+ * 	if (calico_init()) throw "Update calico static library";
+ *
+ * Returns 0 on success.
+ * Returns non-zero if the API level does not match.
+ */
+extern int _calico_init(int expected_version);
+#define calico_init() _calico_init(CALICO_VERSION)
+
+typedef struct {
+	// TODO
+	char internal[64];
+} CalicoState;
+
+enum CalicoRoles {
+	CALICO_INITIATOR = 1,
+	CALICO_RESPONDER = 2
 };
+
+enum CalicoOverhead {
+	CALICO_OVERHEAD = 11 // Number of bytes added per message
+};
+
+/*
+ * TODO
+ */
+extern int calico_set_role(CalicoState *S, int role, const void *key, int key_bytes, const void *name, int name_bytes);
+
+/*
+ * TODO
+ */
+extern int calico_encrypt(CalicoState *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes);
+
+/*
+ * TODO
+ */
+extern int calico_decrypt(CalicoState *S, void *ciphertext, int *ciphertext_bytes);
+
+/*
+ * TODO
+ */
+extern int calico_cleanup(CalicoState *S);
+
+
+#ifdef __cplusplus
+}
+#endif
+
+
+#endif // CAT_CALICO_H
+
