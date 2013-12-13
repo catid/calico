@@ -28,6 +28,12 @@
 
 #include "calico.h"
 
+#include "chacha.h"
+
+#include "Platform.hpp"
+using namespace cat;
+
+
 // IV constants
 static const int IV_BYTES = 3;
 static const int IV_BITS = IV_BYTES * 8;
@@ -44,7 +50,42 @@ int _calico_init(int expected_version) {
 	return (CALICO_VERSION == expected_version) ? 0 : -1;
 }
 
-int calico_create(calico_state *S, int role, const void *key, int key_bytes) {
+int calico_create(calico_state *S, int role, const char key[32]) {
+	if (role != CALICO_INITIATOR && role != CALICO_RESPONDER) {
+		return -1;
+	}
+
+	if (!key || !S) {
+		return -1;
+	}
+
+	// Expand key into two 200 byte keys using ChaCha20:
+
+	chacha_iv iv;
+	CAT_OBJCLR(iv);
+
+	u8 expanded_key[400];
+	CAT_OBJCLR(expanded_key);
+
+	chacha((const chacha_key *)key, &iv, expanded_key, expanded_key, sizeof(expanded_key), 20);
+
+	// Swap keys based on mode
+	u8 *lkey = keys, *rkey = keys;
+	if (role == CALICO_INITIATOR) lkey += 200;
+	else rkey += 200;
+
+	// Initialize the cipher with these keys
+	_cipher.Initialize(lkey, rkey);
+
+	// Grab the IVs from the key bytes
+	u64 liv = getLE(*(u64*)(lkey + 192));
+	u64 riv = getLE(*(u64*)(rkey + 192));
+
+	// Initialize the IV subsystem
+	_window.Initialize(liv, riv);
+
+	CAT_SECURE_OBJCLR(keys);
+
 	return 0;
 }
 

@@ -8,7 +8,7 @@ CCPP = clang++ -m64
 CC = clang -m64
 OPTFLAGS = -O3
 DBGFLAGS = -g -O0 -DDEBUG
-CFLAGS = -Wall -fstrict-aliasing -I./blake2/sse -I./chacha-opt -I./libcat -I./include \
+CFLAGS = -Wall -fstrict-aliasing -I./chacha-opt -I./libcat -I./include \
 		 -Dchacha_blocks_impl=chacha_blocks_ssse3 -Dhchacha_impl=hchacha
 LIBNAME = libcalico.a
 LIBS =
@@ -18,7 +18,7 @@ LIBS =
 
 shared_test_o = Clock.o
 
-extern_o = blake2b.o chacha.o chacha_blocks_ssse3-64.o
+extern_o = chacha.o chacha_blocks_ssse3-64.o
 
 libcat_o = BitMath.o EndianNeutral.o
 
@@ -83,9 +83,6 @@ ChaChaVMAC.o : src/ChaChaVMAC.cpp
 
 VHash.o : src/VHash.cpp
 	$(CCPP) $(CFLAGS) -c VHash.cpp
-
-blake2b.o : blake2/sse/blake2b.c
-	$(CC) $(CFLAGS) -c blake2/sse/blake2b.c
 
 chacha.o : chacha-opt/chacha.c
 	$(CC) $(CFLAGS) -c chacha-opt/chacha.c

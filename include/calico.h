@@ -74,13 +74,12 @@ enum CalicoOverhead {
  *
  * Preconditions:
  * 	role = CALICO_INITIATOR or CALICO_RESPONDER
- * 	key_bytes >= 32
  *
  * Returns 0 on success.
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_create(calico_state *S, int role, const void *key, int key_bytes);
+extern int calico_create(calico_state *S, int role, const char key[32]);
 
 /*
  * Encrypt plaintext into ciphertext
