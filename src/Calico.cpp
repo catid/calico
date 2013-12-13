@@ -1,3 +1,86 @@
+/*
+	Copyright (c) 2012-2013 Christopher A. Taylor.  All rights reserved.
+
+	Redistribution and use in source and binary forms, with or without
+	modification, are permitted provided that the following conditions are met:
+
+	* Redistributions of source code must retain the above copyright notice,
+	  this list of conditions and the following disclaimer.
+	* Redistributions in binary form must reproduce the above copyright notice,
+	  this list of conditions and the following disclaimer in the documentation
+	  and/or other materials provided with the distribution.
+	* Neither the name of Calico nor the names of its contributors may be used
+	  to endorse or promote products derived from this software without
+	  specific prior written permission.
+
+	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+	AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+	IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+	ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+	LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+	CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+	SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+	INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+	CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+	ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+	POSSIBILITY OF SUCH DAMAGE.
+*/
+
+#include "calico.h"
+
+// IV constants
+static const int IV_BYTES = 3;
+static const int IV_BITS = IV_BYTES * 8;
+static const u32 IV_MSB = (1 << IV_BITS);
+static const u32 IV_MASK = (IV_MSB - 1);
+static const u32 IV_FUZZ = 0x9F286AD7;
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+int _calico_init(int expected_version) {
+	return (CALICO_VERSION == expected_version) ? 0 : -1;
+}
+
+int calico_create(calico_state *S, int role, const void *key, int key_bytes) {
+	return 0;
+}
+
+int calico_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes) {
+	return 0;
+}
+
+int calico_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes) {
+	return 0;
+}
+
+int calico_cleanup(calico_state *S) {
+	return 0;
+}
+
+#ifdef __cplusplus
+}
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #include "Calico.hpp"
 #include "blake2/ref/blake2.h"
 #include "EndianNeutral.hpp"
