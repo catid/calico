@@ -78,7 +78,7 @@ enum CalicoOverhead {
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_create(calico_state *S, int role, const char key[32]);
+extern int calico_key(calico_state *S, int role, const char key[32]);
 
 /*
  * Encrypt plaintext into ciphertext

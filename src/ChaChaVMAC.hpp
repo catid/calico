@@ -16,7 +16,7 @@
 	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 	AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 	IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-	ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+	ARE DISCLAIMED.	 IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
 	LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
 	CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
 	SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
@@ -29,64 +29,27 @@
 #ifndef CAT_CHACHA_VMAC_HPP
 #define CAT_CHACHA_VMAC_HPP
 
+#include "Platform.hpp"
 #include "VHash.hpp"
-#include "chacha.h"
 
 namespace cat {
 
 
-class CAT_EXPORT ChaChaVMAC
-{
-	chacha_iv _local_iv, _remote_iv;
-	VHash _local_mac, _remote_mac;
+typedef struct {
+	vhash_state hash_state;
+	u32 chacha_state[16];
+} chacha_vmac_state;
 
-public:
-	~ChaChaVMAC();
+bool chacha_key_expand(const char key[32], void *buffer, int bytes);
 
-	/*
-	 * Initialize(key)
-	 *
-	 * lkey: Local key (192 bytes)
-	 * rkey: Remote key (192 bytes)
-	 *
-	 * No input checking is performed by this function.
-	 */
-	void Initialize(const u8 lkey[192], const u8 rkey[192]);
+void chacha_key(chacha_vmac_state *state, const char key[32]);
 
-	/*
-	 * Encrypt(buffer, bytes)
-	 *
-	 * Encrypts the from buffer into the to buffer, adding a MAC to the end.
-	 *
-	 * iv: Message initialization vector (IV)
-	 * from: Pointer to plaintext buffer
-	 * to: Pointer to output encrypted data buffer
-	 * bytes: The length of the plaintext message
-	 *
-	 * The buffer must have room for the additional 8 bytes, and no input
-	 * checking is performed by this function.
-	 */
-	void Encrypt(u64 iv, const void *from, void *to, int bytes);
+void chacha_encrypt(chacha_vmac_state *state, u64 iv, const void *from, void *to, int bytes);
 
-	/*
-	 * valid = Decrypt(buffer, bytes)
-	 *
-	 * Decrypts the given buffer in-place, plucking the last 8 bytes off the
-	 * end that were added during encryption.
-	 *
-	 * iv: Message initialization vector (IV)
-	 * buffer: The message to decrypt in-place
-	 * bytes: Number of bytes in the original plaintext message (not including
-	 * the IV added by the encryption process, see above)
-	 *
-	 * Returns true if the MAC was valid, or false if tampering was detected.
-	 *
-	 * This function performs no input checking.
-	 */
-	bool Decrypt(u64 iv, void *buffer, int bytes);
-};
+bool chacha_decrypt(chacha_vmac_state *state, u64 iv, void *buffer, int bytes);
 
 
 } // namespace cat
 
 #endif // CAT_CHACHA_VMAC_HPP
+

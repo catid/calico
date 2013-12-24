@@ -28,10 +28,8 @@
 
 #include "calico.h"
 
-#include "chacha.h"
-
-#include "Platform.hpp"
-#include "VHash.hpp"
+#include "ChaChaVMAC.hpp"
+#include "AntiReplayWindow.hpp"
 using namespace cat;
 
 
@@ -44,45 +42,56 @@ static const u32 IV_FUZZ = 0x9F286AD7;
 
 
 typedef struct {
-	vhash_state local_hash, remote_hash;
 	antireplay_state window;
-	u8 local_key[32], remote_key[32];
+	chacha_vmac_state local, remote;
 } calico_internal_state;
 
+static bool m_initialized = false;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 int _calico_init(int expected_version) {
-	return (CALICO_VERSION == expected_version) ? 0 : -1;
+	// If version does not match,
+	if (CALICO_VERSION != expected_version) {
+		return -1;
+	}
+
+	// If internal state is larger than opaque object,
+	if (sizeof(calico_internal_state) > sizeof(calico_state)) {
+		return -1;
+	}
+
+	m_initialized = true;
+
+	return 0;
 }
 
-int calico_create(calico_state *S, int role, const char key[32]) {
+int calico_key(calico_state *S, int role, const char key[32]) {
 	calico_internal_state *state = (calico_internal_state *)S;
 
+	// If input is invalid,
+	if (!m_initialized || !key || !S) {
+		return -1;
+	}
+
+	// If role is invalid,
 	if (role != CALICO_INITIATOR && role != CALICO_RESPONDER) {
 		return -1;
 	}
 
-	if (!key || !S) {
-		return -1;
-	}
+	// Expand key into two keys using ChaCha20:
 
-	// Expand key into two 200 byte keys using ChaCha20:
+	static const int KEY_BYTES = 224;
 
-	chacha_iv iv;
-	CAT_OBJCLR(iv);
-
-	u8 keys[400];
-	CAT_OBJCLR(keys);
-
-	chacha((const chacha_key *)key, &iv, keys, keys, sizeof(keys), 20);
+	u8 keys[KEY_BYTES + KEY_BYTES];
+	chacha_key_expand(key, keys, sizeof(keys));
 
 	// Swap keys based on mode
 	u8 *lkey = keys, *rkey = keys;
-	if (role == CALICO_INITIATOR) lkey += 200;
-	else rkey += 200;
+	if (role == CALICO_INITIATOR) lkey += KEY_BYTES;
+	else rkey += KEY_BYTES;
 
 	// Initialize the hash
 	memcpy(&state->local_hash, lkey, 160);
@@ -91,12 +100,12 @@ int calico_create(calico_state *S, int role, const char key[32]) {
 	vhash_set_key(&state->remote_hash);
 
 	// Initialize the cipher
-	memcpy(state->local_key, lkey + 160, 32);
-	memcpy(state->remote_key, rkey + 160, 32);
+	memcpy(&state->local_cipher, lkey + 160, 64);
+	memcpy(&state->remote_cipher, rkey + 160, 64);
 
 	// Grab the IVs from the key bytes
-	u64 liv = getLE(*(u64*)(lkey + 192));
-	u64 riv = getLE(*(u64*)(rkey + 192));
+	u64 liv = getLE(*(u64*)(lkey + 160 + 64));
+	u64 riv = getLE(*(u64*)(rkey + 160 + 64));
 
 	// Initialize the IV subsystem
 	antireplay_init(&state->window, liv, riv);
@@ -106,11 +115,70 @@ int calico_create(calico_state *S, int role, const char key[32]) {
 	return 0;
 }
 
-int calico_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes) {
+int calico_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes_ptr) {
+
+	// If input is invalid,
+	if (!m_initialized || !S || !plaintext || !ciphertext ||
+		plaintext_bytes < 0 || !ciphertext_bytes || *ciphertext_bytes < 0) {
+		return -1;
+	}
+
+	// If plaintext bytes are too high,
+	if (plaintext_bytes > INT_MAX - CALICO_OVERHEAD) {
+		return -1;
+	}
+
+	// If ciphertext bytes are not large enough,
+	int ciphertext_bytes = *ciphertext_bytes_ptr;
+	if (plaintext_bytes + CALICO_OVERHEAD > ciphertext_bytes) {
+		return -1;
+	}
+
+	// Select next IV
+	const u64 iv = state->window.local++;
+
+	chacha_iv civ;
+	*(u64*)&civ = getLE64(iv);
+
+	chacha_state cipher;
+	chacha_init(&cipher, (const chacha_key *)state->local_key, &civ, 20);
+
+	char mac[8] = {0};
+	chacha_update(&cipher, (u8 *)mac, (u8 *)mac, 8);
+	chacha_update(&cipher, (u8 *)plaintext
+
+	chacha((const chacha_key *)state->local_key, &civ, plaintext, ciphertext, plaintext_bytes, 20);
+
+	// Attach IV to the end:
+
+	u8 *overhead8 = reinterpret_cast<u8*>( ciphertext ) + plaintext_bytes;
+	const u32 *overhead32 = reinterpret_cast<const u32*>( overhead8 );
+
+	// Obfuscate the truncated IV
+	u32 trunc_iv = (u32)iv;
+	trunc_iv -= getLE(*overhead32);
+	trunc_iv ^= IV_FUZZ;
+
+	// Append it to the data
+	overhead8[8] = (u8)trunc_iv;
+	overhead8[9] = (u8)(trunc_iv >> 16);
+	overhead8[10] = (u8)(trunc_iv >> 8);
+
+	// Set ciphertext bytes
+	*ciphertext_bytes = plaintext_bytes + CALICO_OVERHEAD;
+
 	return 0;
 }
 
 int calico_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes) {
+	// If IV is invalid,
+	if (!antireplay_check(&state->window, iv)) {
+		return -1;
+	}
+
+	// Accept IV
+	antireplay_accept(&state->window, iv);
+
 	return 0;
 }
 
