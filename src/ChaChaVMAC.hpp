@@ -37,12 +37,12 @@ namespace cat {
 
 typedef struct {
 	vhash_state hash_state;
-	u32 chacha_state[16];
+	u32 chacha_key[8];
 } chacha_vmac_state;
 
 bool chacha_key_expand(const char key[32], void *buffer, int bytes);
 
-void chacha_key(chacha_vmac_state *state, const char key[32]);
+bool chacha_key(chacha_vmac_state *state, const char key[32]);
 
 void chacha_encrypt(chacha_vmac_state *state, u64 iv, const void *from, void *to, int bytes);
 

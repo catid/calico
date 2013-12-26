@@ -33,7 +33,7 @@
 extern "C" {
 #endif
 
-#define CALICO_VERSION 0
+#define CALICO_VERSION 1
 
 /*
  * Verify binary compatibility with the Calico API on startup.
@@ -117,12 +117,8 @@ extern int calico_decrypt(calico_state *S, void *ciphertext, int *ciphertext_byt
  *
  * The purpose of cleaning up the object is to securely erase the internal
  * state of the Calico session.
- *
- * Returns 0 on success.
- * Returns non-zero if one of the input parameters is invalid.
- * It is important to check the return value to avoid active attacks.
  */
-extern int calico_cleanup(calico_state *S);
+extern void calico_cleanup(calico_state *S);
 
 
 #ifdef __cplusplus

@@ -83,29 +83,29 @@ int calico_key(calico_state *S, int role, const char key[32]) {
 
 	// Expand key into two keys using ChaCha20:
 
-	static const int KEY_BYTES = 224;
+	static const int KEY_BYTES = 64;
 
-	u8 keys[KEY_BYTES + KEY_BYTES];
-	chacha_key_expand(key, keys, sizeof(keys));
+	char keys[KEY_BYTES + KEY_BYTES];
+	if (!chacha_key_expand(key, keys, sizeof(keys))) {
+		return -1;
+	}
 
 	// Swap keys based on mode
-	u8 *lkey = keys, *rkey = keys;
+	char *lkey = keys, *rkey = keys;
 	if (role == CALICO_INITIATOR) lkey += KEY_BYTES;
 	else rkey += KEY_BYTES;
 
-	// Initialize the hash
-	memcpy(&state->local_hash, lkey, 160);
-	memcpy(&state->remote_hash, rkey, 160);
-	vhash_set_key(&state->local_hash);
-	vhash_set_key(&state->remote_hash);
-
-	// Initialize the cipher
-	memcpy(&state->local_cipher, lkey + 160, 64);
-	memcpy(&state->remote_cipher, rkey + 160, 64);
+	// Key the ciphers
+	if (!chacha_key(&state->local, lkey)) {
+		return -1;
+	}
+	if (!chacha_key(&state->remote, rkey)) {
+		return -1;
+	}
 
 	// Grab the IVs from the key bytes
-	u64 liv = getLE(*(u64*)(lkey + 160 + 64));
-	u64 riv = getLE(*(u64*)(rkey + 160 + 64));
+	u64 liv = getLE(*(u64*)(lkey + 32));
+	u64 riv = getLE(*(u64*)(rkey + 32));
 
 	// Initialize the IV subsystem
 	antireplay_init(&state->window, liv, riv);
@@ -116,7 +116,6 @@ int calico_key(calico_state *S, int role, const char key[32]) {
 }
 
 int calico_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes_ptr) {
-
 	// If input is invalid,
 	if (!m_initialized || !S || !plaintext || !ciphertext ||
 		plaintext_bytes < 0 || !ciphertext_bytes || *ciphertext_bytes < 0) {
@@ -137,17 +136,7 @@ int calico_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, 
 	// Select next IV
 	const u64 iv = state->window.local++;
 
-	chacha_iv civ;
-	*(u64*)&civ = getLE64(iv);
-
-	chacha_state cipher;
-	chacha_init(&cipher, (const chacha_key *)state->local_key, &civ, 20);
-
-	char mac[8] = {0};
-	chacha_update(&cipher, (u8 *)mac, (u8 *)mac, 8);
-	chacha_update(&cipher, (u8 *)plaintext
-
-	chacha((const chacha_key *)state->local_key, &civ, plaintext, ciphertext, plaintext_bytes, 20);
+	chacha_encrypt(&state->local, iv, plaintext, ciphertext, plaintext_bytes);
 
 	// Attach IV to the end:
 
@@ -171,19 +160,60 @@ int calico_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, 
 }
 
 int calico_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes) {
-	// If IV is invalid,
-	if (!antireplay_check(&state->window, iv)) {
+	// If input is invalid,
+	if (!m_initialized || !S || !ciphertext || !ciphertext_bytes || *ciphertext_bytes < 0) {
 		return -1;
 	}
 
-	// Accept IV
-	antireplay_accept(&state->window, iv);
+	*ciphertext_bytes = -1;
+
+	// If too small,
+	if (ciphertext_bytes < INT_MIN + CALICO_OVERHEAD) {
+		return -1;
+	}
+
+	// It too large,
+	int plaintext_bytes = ciphertext_bytes - CALICO_OVERHEAD;
+	if (plaintext_bytes < 0) {
+		return -1;
+	}
+
+	u8 *overhead8 = reinterpret_cast<u8*>( ciphertext ) + plaintext_bytes;
+	u32 *overhead32 = reinterpret_cast<u32*>( overhead8 );
+
+	// Grab the obfuscated IV
+	u32 trunc_iv = ((u32)overhead8[10] << 8) | ((u32)overhead8[9] << 16) | (u32)overhead8[8];
+
+	// De-obfuscate the truncated IV
+	trunc_iv ^= IV_FUZZ;
+	trunc_iv += getLE(*overhead32);
+	trunc_iv &= IV_MASK;
+
+	// Reconstruct the full IV counter
+	u64 iv = ReconstructCounter<IV_BITS>(S->window.remote, trunc_iv);
+
+	// Validate IV
+	if (!antireplay_check(S, iv)) {
+		return -1;
+	}
+
+	// Decrypt and check MAC
+	if (!chacha_decrypt(&S->remote, iv, ciphertext, plaintext_bytes)) {
+		return -1;
+	}
+
+	// Accept this IV
+	antrireplay_accept(S, iv);
+
+	*ciphertext_bytes = plaintext_bytes;
 
 	return 0;
 }
 
-int calico_cleanup(calico_state *S) {
-	return 0;
+void calico_cleanup(calico_state *S) {
+	if (!S) {
+		cat_secure_erase(S, sizeof(calico_state));
+	}
 }
 
 #ifdef __cplusplus
