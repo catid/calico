@@ -30,7 +30,12 @@
 
 #include "ChaChaVMAC.hpp"
 #include "AntiReplayWindow.hpp"
+#include "EndianNeutral.hpp"
+#include "SecureErase.hpp"
+#include "BitMath.hpp"
 using namespace cat;
+
+#include <climits>
 
 
 // IV constants
@@ -72,7 +77,7 @@ int calico_key(calico_state *S, int role, const char key[32]) {
 	calico_internal_state *state = (calico_internal_state *)S;
 
 	// If input is invalid,
-	if (!m_initialized || !key || !S) {
+	if (!m_initialized || !key || !state) {
 		return -1;
 	}
 
@@ -116,9 +121,11 @@ int calico_key(calico_state *S, int role, const char key[32]) {
 }
 
 int calico_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes_ptr) {
+	calico_internal_state *state = (calico_internal_state *)S;
+
 	// If input is invalid,
-	if (!m_initialized || !S || !plaintext || !ciphertext ||
-		plaintext_bytes < 0 || !ciphertext_bytes || *ciphertext_bytes < 0) {
+	if (!m_initialized || !state || !plaintext || !ciphertext ||
+		plaintext_bytes < 0 || !ciphertext_bytes_ptr) {
 		return -1;
 	}
 
@@ -154,29 +161,31 @@ int calico_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, 
 	overhead8[10] = (u8)(trunc_iv >> 8);
 
 	// Set ciphertext bytes
-	*ciphertext_bytes = plaintext_bytes + CALICO_OVERHEAD;
+	*ciphertext_bytes_ptr = plaintext_bytes + CALICO_OVERHEAD;
 
 	return 0;
 }
 
 int calico_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes) {
+	calico_internal_state *state = (calico_internal_state *)S;
+
 	// If input is invalid,
-	if (!m_initialized || !S || !ciphertext || !ciphertext_bytes || *ciphertext_bytes < 0) {
+	if (!m_initialized || !state || !ciphertext || !ciphertext_bytes || *ciphertext_bytes < 0) {
 		return -1;
 	}
 
-	*ciphertext_bytes = -1;
-
 	// If too small,
-	if (ciphertext_bytes < INT_MIN + CALICO_OVERHEAD) {
+	if (*ciphertext_bytes < INT_MIN + CALICO_OVERHEAD) {
 		return -1;
 	}
 
 	// It too large,
-	int plaintext_bytes = ciphertext_bytes - CALICO_OVERHEAD;
+	int plaintext_bytes = *ciphertext_bytes - CALICO_OVERHEAD;
 	if (plaintext_bytes < 0) {
 		return -1;
 	}
+
+	*ciphertext_bytes = -1;
 
 	u8 *overhead8 = reinterpret_cast<u8*>( ciphertext ) + plaintext_bytes;
 	u32 *overhead32 = reinterpret_cast<u32*>( overhead8 );
@@ -190,20 +199,20 @@ int calico_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes) {
 	trunc_iv &= IV_MASK;
 
 	// Reconstruct the full IV counter
-	u64 iv = ReconstructCounter<IV_BITS>(S->window.remote, trunc_iv);
+	u64 iv = ReconstructCounter<IV_BITS>(state->window.remote, trunc_iv);
 
 	// Validate IV
-	if (!antireplay_check(S, iv)) {
+	if (!antireplay_check(&state->window, iv)) {
 		return -1;
 	}
 
 	// Decrypt and check MAC
-	if (!chacha_decrypt(&S->remote, iv, ciphertext, plaintext_bytes)) {
+	if (!chacha_decrypt(&state->remote, iv, ciphertext, plaintext_bytes)) {
 		return -1;
 	}
 
 	// Accept this IV
-	antrireplay_accept(S, iv);
+	antireplay_accept(&state->window, iv);
 
 	*ciphertext_bytes = plaintext_bytes;
 
@@ -212,7 +221,7 @@ int calico_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes) {
 
 void calico_cleanup(calico_state *S) {
 	if (!S) {
-		cat_secure_erase(S, sizeof(calico_state));
+		cat_secure_erase(S, sizeof(calico_internal_state));
 	}
 }
 
@@ -220,139 +229,3 @@ void calico_cleanup(calico_state *S) {
 }
 #endif
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-int Calico::Initialize(const void *key,				// Pointer to key material
-					   const char *session_name,	// Unique session name
-					   int mode)					// Value from CalicoModes
-{
-	_initialized = false;
-
-	if (!key || !session_name)
-		return ERR_BAD_INPUT;
-	if (mode < INITIATOR || mode > RESPONDER)
-		return ERR_BAD_INPUT;
-
-	// Derive a key from given key and session name
-	u8 derived_key[64];
-	if (0 != blake2b(derived_key, session_name, key, 64, strlen(session_name), 32))
-		return ERR_INTERNAL;
-
-	// Expand derived key using ChaCha function
-	u8 keys[200 + 200];
-	expandKey(derived_key, keys);
-
-	// Swap keys based on mode
-	u8 *lkey = keys, *rkey = keys;
-	if (mode == CALICO_INITIATOR) lkey += 200;
-	else rkey += 200;
-
-	// Initialize the cipher with these keys
-	_cipher.Initialize(lkey, rkey);
-
-	// Grab the IVs from the key bytes
-	u64 liv = getLE(*(u64*)(lkey + 192));
-	u64 riv = getLE(*(u64*)(rkey + 192));
-
-	// Initialize the IV subsystem
-	_window.Initialize(liv, riv);
-
-	_initialized = true;
-
-	CAT_SECURE_OBJCLR(keys);
-
-	return ERR_GROOVY;
-}
-
-int Calico::Encrypt(const void *plaintext,	// Pointer to input plaintext
-					int plaintext_bytes, 	// Input buffer size
-					void *ciphertext,		// Pointer to output ciphertext
-					int ciphertext_bytes)	// Output buffer size
-{
-	if (!_initialized)
-		return ERR_BAD_STATE;
-	if (!plaintext || plaintext_bytes < 0 || !ciphertext)
-		return ERR_BAD_INPUT;
-	if (plaintext_bytes > INT_MAX - OVERHEAD)
-		return ERR_TOO_SMALL;
-	if (plaintext_bytes + OVERHEAD > ciphertext_bytes)
-		return ERR_TOO_SMALL;
-
-	// Get next outgoing IV
-	u64 iv = _window.NextLocal();
-
-	// Encrypt data and slap on a MAC
-	_cipher.Encrypt(iv, plaintext, ciphertext, plaintext_bytes);
-
-	u8 *overhead8 = reinterpret_cast<u8*>( ciphertext ) + plaintext_bytes;
-	const u32 *overhead32 = reinterpret_cast<const u32*>( overhead8 );
-
-	// Obfuscate the truncated IV
-	u32 trunc_iv = (u32)iv;
-	trunc_iv -= getLE(*overhead32);
-	trunc_iv ^= IV_FUZZ;
-
-	// Append it to the data
-	overhead8[8] = (u8)trunc_iv;
-	overhead8[9] = (u8)(trunc_iv >> 16);
-	overhead8[10] = (u8)(trunc_iv >> 8);
-
-	return plaintext_bytes + OVERHEAD;
-}
-
-int Calico::Decrypt(void *ciphertext,		// Pointer to ciphertext
-					int ciphertext_bytes)	// Number of valid encrypted data bytes
-{
-	if (!_initialized)
-		return ERR_BAD_STATE;
-	if (!ciphertext)
-		return ERR_BAD_INPUT;
-	if (ciphertext_bytes < INT_MIN + OVERHEAD)
-		return ERR_TOO_SMALL;
-
-	int plaintext_bytes = ciphertext_bytes - OVERHEAD;
-	if (plaintext_bytes < 0)
-		return ERR_TOO_SMALL;
-
-	u8 *overhead8 = reinterpret_cast<u8*>( ciphertext ) + plaintext_bytes;
-	u32 *overhead32 = reinterpret_cast<u32*>( overhead8 );
-
-	// Grab the obfuscated IV
-	u32 trunc_iv = ((u32)overhead8[10] << 8) | ((u32)overhead8[9] << 16) | (u32)overhead8[8];
-
-	// De-obfuscate the truncated IV
-	trunc_iv ^= IV_FUZZ;
-	trunc_iv += getLE(*overhead32);
-	trunc_iv &= IV_MASK;
-
-	// Reconstruct the full IV counter
-	u64 iv = ReconstructCounter<IV_BITS>(_window.LastAccepted(), trunc_iv);
-
-	// Validate IV
-	if (!_window.Validate(iv))
-		return ERR_IV_DROP;
-
-	// Decrypt and check MAC
-	if (!_cipher.Decrypt(iv, ciphertext, plaintext_bytes))
-		return ERR_MAC_DROP;
-
-	// Accept this IV
-	_window.Accept(iv);
-
-	return plaintext_bytes;
-}

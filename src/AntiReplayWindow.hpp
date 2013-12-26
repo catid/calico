@@ -34,7 +34,7 @@
 namespace cat {
 
 
-typedef struct {
+typedef struct _antireplay_state {
 	static const int BITMAP_BITS = 1024; // Good for file transfer rates
 	static const int BITMAP_WORDS = BITMAP_BITS / 64;
 

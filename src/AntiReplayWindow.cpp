@@ -38,7 +38,7 @@ void cat::antireplay_init(antireplay_state *S, u64 local_iv, u64 remote_iv) {
 
 bool cat::antireplay_check(antireplay_state *S, u64 remote_iv) {
 	// Check how far in the past this IV is
-	int delta = (int)(S->remote - iv);
+	int delta = (int)(S->remote - remote_iv);
 
 	// If it is in the past,
 	if (delta >= 0)
@@ -56,7 +56,7 @@ bool cat::antireplay_check(antireplay_state *S, u64 remote_iv) {
 
 void cat::antireplay_accept(antireplay_state *S, u64 remote_iv) {
 	// Check how far in the past/future this IV is
-	int delta = (int)(iv - S->remote);
+	int delta = (int)(remote_iv - S->remote);
 	u64 *bitmap = S->bitmap;
 
 	// If it is in the future,
@@ -101,7 +101,7 @@ void cat::antireplay_accept(antireplay_state *S, u64 remote_iv) {
 		}
 
 		// Only update the IV if the MAC was valid and the new IV is in the future
-		S->remote = iv;
+		S->remote = remote_iv;
 	}
 	else // Process an out-of-order packet
 	{

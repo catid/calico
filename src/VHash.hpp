@@ -45,7 +45,7 @@ namespace cat {
 
 
 // VHash internal state
-typedef struct {
+typedef struct _vhash_state {
 	static const int BYTES = 128;
 	static const int WORDS = BYTES / 8; // 16
 

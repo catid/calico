@@ -27,6 +27,7 @@
 */
 
 #include "ChaChaVMAC.hpp"
+#include "EndianNeutral.hpp"
 using namespace cat;
 
 static const int CHACHA_ROUNDS = 12;
@@ -118,7 +119,13 @@ bool cat::chacha_key_expand(const char key[32], void *buffer, int bytes) {
 }
 
 bool cat::chacha_key(chacha_vmac_state *state, const char key[32]) {
-	return chacha_key_expand(state, sizeof(chacha_vmac_state));
+	if (!chacha_key_expand(key, state, sizeof(chacha_vmac_state))) {
+		return false;
+	}
+
+	vhash_set_key(&state->hash_state);
+
+	return true;
 }
 
 void cat::chacha_encrypt(chacha_vmac_state *state, u64 iv_counter, const void *from, void *to, int bytes)
@@ -199,7 +206,7 @@ void cat::chacha_encrypt(chacha_vmac_state *state, u64 iv_counter, const void *f
 	// Attach MAC:
 	{
 		// Hash the encrypted buffer
-		u64 mac = vhash(state->hash_state, to, bytes);
+		u64 mac = vhash(&state->hash_state, to, bytes);
 
 		u8 *to8 = reinterpret_cast<u8 *>( to );
 		u32 *overhead = reinterpret_cast<u32 *>( to8 + bytes );
@@ -210,7 +217,7 @@ void cat::chacha_encrypt(chacha_vmac_state *state, u64 iv_counter, const void *f
 	}
 }
 
-bool cat::chacha_decrypt(chacha_vmac_state *state, u64 iv, void *buffer, int bytes)
+bool cat::chacha_decrypt(chacha_vmac_state *state, u64 iv_counter, void *buffer, int bytes)
 {
 	CHACHA_REGISTERS;
 
@@ -228,7 +235,7 @@ bool cat::chacha_decrypt(chacha_vmac_state *state, u64 iv, void *buffer, int byt
 	// Recover and verify MAC:
 	{
 		// Hash the encrypted buffer
-		u64 mac = vhash(state->hash_state, buffer, bytes);
+		u64 mac = vhash(&state->hash_state, buffer, bytes);
 
 		u8 *text8 = reinterpret_cast<u8 *>( buffer );
 		const u32 *overhead = reinterpret_cast<const u32 *>( text8 + bytes );

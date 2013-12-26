@@ -49,11 +49,12 @@ static void NH128(const u64 *data, const u64 *key, int words, u64 &a_hi, u64 &a_
 	CAT_MUL64(r_hi, r_lo, getLE(data[0]) + key[0], getLE(data[1]) + key[1]);
 
 	// For each remaining block:
-	for (;;)
-	{
+	for (;;) {
 		// Exit condition
 		words -= 2;
-		if (words <= 0) break;
+		if (words <= 0) {
+			break;
+		}
 
 		data += 2;
 		key += 2;
@@ -73,8 +74,7 @@ static void NH512(const u64 *data, const u64 *key, int words, u64 &a_hi, u64 &a_
 	register u64 r_hi = 0, r_lo = 0;
 
 	// For each block:
-	for (;;)
-	{
+	for (;;) {
 		register u64 t_hi, t_lo;
 		CAT_MUL64(t_hi, t_lo, getLE(data[0]) + key[0], getLE(data[1]) + key[1]);
 		CAT_ADD128(r_hi, r_lo, t_hi, t_lo);
@@ -87,7 +87,9 @@ static void NH512(const u64 *data, const u64 *key, int words, u64 &a_hi, u64 &a_
 
 		// Exit condition
 		words -= 8;
-		if (words <= 0) break;
+		if (words <= 0) {
+			break;
+		}
 
 		data += 8;
 		key += 8;
@@ -186,8 +188,10 @@ static u64 Level3Hash(u64 p_hi, u64 p_lo, u64 k_hi, u64 k_lo, u64 len)
 void cat::vhash_set_key(vhash_state *S) {
 #if !defined(CAT_ENDIAN_LITTLE)
 	// Fix byte order
-	for (int ii = 0; ii < vhash_state::WORDS; ++ii)
+	for (int ii = 0; ii < vhash_state::WORDS; ++ii) {
 		swapLE(S->nhkey[ii]);
+	}
+
 	swapLE(S->polykey[0]);
 	swapLE(S->polykey[1]);
 	swapLE(S->l3key[0]);
@@ -204,72 +208,65 @@ void cat::vhash_set_key(vhash_state *S) {
  */
 u64 cat::vhash(vhash_state *S, const void *vdata, int bytes) {
 	const u64 *data = reinterpret_cast<const u64 *>( vdata );
-	int blocks = bytes / vhash_state::NHBYTES;
-	int remains = bytes % vhash_state::NHBYTES;
+	int blocks = bytes / vhash_state::BYTES;
+	int remains = bytes % vhash_state::BYTES;
 
 	u64 c_hi, c_lo;
 
 	// Unroll first loop to avoid PolyStep()
-	if (blocks > 0)
-	{
-		NH512(data, _nhkey, vhash_state::WORDS, c_hi, c_lo);
+	if (blocks > 0) {
+		NH512(data, S->nhkey, vhash_state::WORDS, c_hi, c_lo);
 		c_hi &= m62;
-		CAT_ADD128(c_hi, c_lo, _polykey[0], _polykey[1]);
+		CAT_ADD128(c_hi, c_lo, S->polykey[0], S->polykey[1]);
 
 		data += vhash_state::WORDS;
 		--blocks;
 	}
-	else
-	{
-		if (remains)
-		{
+	else {
+		if (remains) {
 			// Copy to temporary location
 			u64 temp[vhash_state::WORDS];
 			memcpy(temp, data, remains);
 			memset((u8 *)temp + remains, 0, vhash_state::BYTES - remains);
 
 			const int data_words = 2 * CAT_CEIL_UNIT(remains, 16);
-			NH128(temp, _nhkey, data_words, c_hi, c_lo);
+			NH128(temp, S->nhkey, data_words, c_hi, c_lo);
 			c_hi &= m62;
-			CAT_ADD128(c_hi, c_lo, _polykey[0], _polykey[1]);
-		}
-		else
-		{
-			c_hi = _polykey[0];
-			c_lo = _polykey[1];
+			CAT_ADD128(c_hi, c_lo, S->polykey[0], S->polykey[1]);
+		} else {
+			c_hi = S->polykey[0];
+			c_lo = S->polykey[1];
 		}
 
-		return Level3Hash(c_hi, c_lo, _l3key[0], _l3key[1], bytes);
+		return Level3Hash(c_hi, c_lo, S->l3key[0], S->l3key[1], bytes);
 	}
 
 	// For each block,
-	while (blocks-- > 0)
-	{
+	while (blocks-- > 0) {
 		u64 r_hi, r_lo;
-		NH512(data, _nhkey, vhash_state::WORDS, r_hi, r_lo);
+		NH512(data, S->nhkey, vhash_state::WORDS, r_hi, r_lo);
 		r_hi &= m62;
 
-		PolyStep(c_hi, c_lo, _polykey[0], _polykey[1], r_hi, r_lo);
+		PolyStep(c_hi, c_lo, S->polykey[0], S->polykey[1], r_hi, r_lo);
 
 		data += vhash_state::WORDS;
 	}
 
 	// If any data remains,
-	if (remains)
-	{
+	if (remains) {
 		// Copy to temporary location
 		u64 temp[vhash_state::WORDS];
 		memcpy(temp, data, remains);
-		memset((u8 *)temp + remains, 0, NHBYTES - remains);
+		memset((u8 *)temp + remains, 0, vhash_state::BYTES - remains);
 
 		u64 r_hi, r_lo;
 		const int data_words = 2 * CAT_CEIL_UNIT(remains, 16);
-		NH128(temp, _nhkey, data_words, r_hi, r_lo);
+		NH128(temp, S->nhkey, data_words, r_hi, r_lo);
 		r_hi &= m62;
 
-		PolyStep(c_hi, c_lo, _polykey[0], _polykey[1], r_hi, r_lo);
+		PolyStep(c_hi, c_lo, S->polykey[0], S->polykey[1], r_hi, r_lo);
 	}
 
-	return Level3Hash(c_hi, c_lo, _l3key[0], _l3key[1], bytes);
+	return Level3Hash(c_hi, c_lo, S->l3key[0], S->l3key[1], bytes);
 }
 

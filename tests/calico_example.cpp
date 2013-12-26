@@ -18,21 +18,13 @@ int main()
 	};
 
 	// Never use the same secret key twice.  Always use a new, random key every
-	// time a new tunnel is created.  How to share a new key is outside of the
-	// scope of this library.
+	// time you call calico_key.
 
-	// Choose a unique session name for each tunnel
-	const char *session_name = "Example Session";
-
-	// If you have multiple sessions from the same key, each one should have a
-	// different session name.  This allows you to use one key to secure
-	// several different sessions.
-
-	if (calico_set_role(&initiator, CALICO_INITIATOR, key, 32, session_name, strlen(session_name))) {
+	if (calico_key(&initiator, CALICO_INITIATOR, key)) {
 		throw "Failure";
 	}
 
-	if (calico_set_role(&responder, CALICO_RESPONDER, key, 32, session_name, strlen(session_name))) {
+	if (calico_key(&responder, CALICO_RESPONDER, key)) {
 		throw "Failure";
 	}
 
@@ -55,6 +47,7 @@ int main()
 
 	// Decrypt the message from the packet
 	if (calico_decrypt(&responder, packet, &packet_len)) {
+		throw "Failure";
 	}
 
 	// The decrypted message size should match the original message size
