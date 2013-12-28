@@ -14,6 +14,8 @@ typedef void (*TestFunction)();
 
 /*
  * Verify that the code reacts properly when used without a key
+ *
+ * Note that valgrind will complain about these but it is okay.
  */
 void UninitializedTest()
 {

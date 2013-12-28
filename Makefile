@@ -42,7 +42,6 @@ debug : library
 
 # Library target
 
-library : CFLAGS += $(OPTFLAGS)
 library : $(calico_o)
 	ar rcs $(LIBNAME) $(calico_o)
 
@@ -108,5 +107,5 @@ calico_example.o : tests/calico_example.cpp
 
 clean :
 	git submodule update --init
-	-rm test bin/libcalico.a $(shared_test_o) $(calico_test_o) $(calico_o)
+	-rm test example $(shared_test_o) $(calico_test_o) $(calico_o)
 

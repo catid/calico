@@ -15,12 +15,14 @@ messages as fast as possible, roughly 5x faster than normal decryption.
 
 Calico does not provide key agreement.  See the [Tabby](https://github.com/catid/tabby)
 library for an efficient and portable implementation of key agreement.  Calico
-also does not open any sockets for you - it only encodes and decodes the data.
+also does not open any sockets for you - It only encodes and decodes the data.
 Calico does not consume any randomness to operate.
 
+Calico uses Chacha-20 for key expansion, ChaCha-14 for encryption, and VMAC
+for a message authentication code.
 
-Benchmarks
-==========
+
+## Benchmarks
 
 ##### libcalico.a on Macbook Air (1.7 GHz Core i5-2557M Sandy Bridge, July 2011):
 
@@ -83,40 +85,54 @@ Passed 11 tests of 11
 All tests passed.
 ~~~
 
-## Building: Mac
-
 ## Usage
 
-The libcat code is referenced as a submodule, so run `git submodule update --init` to download the BLAKE2 code also.
+#### Example Usage
 
-The API has three functions:
+For example usage, check out the [example test](https://github.com/catid/calico/master/tests/calico_example.cpp).
 
-+ result = Initialize(key, name, mode)
+For more thorough usage, check out the [unit tester code](https://github.com/catid/calico/master/tests/calico_test.cpp).
 
-	Initialize() sets up one end of the tunnel.
+#### Building: Mac
 
-	The 256-bit key must only be used once ever, and then thrown away.
-	The name is used to create multiple tunnels from a single key.
-	The mode selects whether it is the initiator or responder.
+Simply run `make test`:  The output will be under `bin/libcalico.a`.  And it will run the unit-tester.
 
-+ len = Encrypt(plaintext, bytes, ciphertext, bytes)
+#### Building: Other
 
-	Encrypt() will encrypt some data, adding overhead for validation.
-	It returns the length of the result.
+The libcat code is referenced as a submodule, so run `git submodule update --init` to download the dependencies.
 
-+ len = Decrypt(ciphertext, bytes)
+The following files are required to build Calico:
 
-	Decrypt() will decrypt some encrypted data, removing the overhead.
-	It decrypts in-place and returns the length of the result.
+~~~
+src/*
 
-See the Example.cpp source file for basic usage.
+libcat/BitMath.*
+libcat/EndianNeutral.*
+libcat/SecureErase.*
+
+libcat/Platform.hpp
+libcat/Config.hpp
+~~~
+
+It should port well to any platform, since it does not use any inline assembly or OS-specific APIs.
+
+#### API Reference
+
+Please refer to the [Calico header file](https://github.com/catid/calico/master/include/calico.h)
+for the API reference.
 
 
-Cryptographic Primitives
-========================
+## Details
 
-512-bit BLAKE2 is used to key 8-round VMAC-ChaCha,
-and an anti-replay window provides replay protection.
+The single 32 byte key provided to `calico_key` is expanded into keys for VHash, the first outgoing
+IV, and the 32 byte ChaCha-14 key.  Each side gets their own set of unique keys.  And each side
+decides which of the keys to use from the `role` parameter that is either `CALICO_INITIATOR` or
+`CALICO_RESPONDER`.
+
+During encryption, ChaCha-14 is keyed with the endpoint's key and with the message's unique IV number,
+which increments by 1 for each outgoing message.  The IV is truncated to the low 3 bytes and will be
+reconstructed by the other party based on the most recently accepted IV.  The message is encrypted,
+and the encrypted message is hashed with VHash.  VHash is a 64-bit Wegman-Carter hash.
 
 + BLAKE2: Full 512-bit version used as a key derivation function.
 + VMAC: Fast; a 64-bit message authentication code.
@@ -128,71 +144,11 @@ taken based on the key material).
 All implementations are cleanroom versions of public domain algorithms.
 
 
-Unit Testing
-============
-The unit tests all pass valgrind.  Here's a run without valgrind on a Macbook Air:
+## Credits
 
-~~~
-    Running test 0 : Uninitialized
-    +++ Test passed.
+This software was written entirely by myself ( Christopher A. Taylor <mrcatid@gmail.com> ).  If you
+find it useful and would like to buy me a coffee, consider [tipping](https://www.gittip.com/catid/).
 
-    Running test 1 : Data Integrity
-    +++ Test passed.
-
-    Running test 2 : Integer Overflow Input
-    +++ Test passed.
-
-    Running test 3 : Wrong Key
-    +++ Test passed.
-
-    Running test 4 : Replay Attack
-    +++ Test passed.
-
-    Running test 5 : Replay Window
-    +++ Test passed.
-
-    Running test 6 : Benchmark Initialize()
-    Benchmark: Initialize() in 4.54089 usec on average / 220221 per second
-    +++ Test passed.
-
-    Running test 7 : Benchmark Encrypt()
-    Benchmark: Encrypt() 10000 bytes in 20.2912 usec on average / 492.824 MBPS / 49282.4 per second
-    Benchmark: Encrypt() 1000 bytes in 2.12911 usec on average / 469.68 MBPS / 469680 per second
-    Benchmark: Encrypt() 100 bytes in 0.33175 usec on average / 301.432 MBPS / 3.01432e+06 per second
-    Benchmark: Encrypt() 10 bytes in 0.19721 usec on average / 50.7074 MBPS / 5.07074e+06 per second
-    Benchmark: Encrypt() 1 bytes in 0.19816 usec on average / 5.04643 MBPS / 5.04643e+06 per second
-    +++ Test passed.
-
-    Running test 8 : Benchmark Decrypt() Rejection
-    Benchmark: Decrypt() drops 10000 corrupted bytes in 1.76228 usec on average / 5674.47 MBPS / 567447 per second
-    Benchmark: Decrypt() drops 1000 corrupted bytes in 0.3495 usec on average / 2861.23 MBPS / 2.86123e+06 per second
-    Benchmark: Decrypt() drops 100 corrupted bytes in 0.21187 usec on average / 471.988 MBPS / 4.71988e+06 per second
-    Benchmark: Decrypt() drops 10 corrupted bytes in 0.20319 usec on average / 49.215 MBPS / 4.9215e+06 per second
-    Benchmark: Decrypt() drops 1 corrupted bytes in 0.20454 usec on average / 4.88902 MBPS / 4.88902e+06 per second
-    +++ Test passed.
-
-    Running test 9 : Benchmark Decrypt() Accept
-    Benchmark: Decrypt() 10000 bytes in 19.3794 usec on average / 516.012 MBPS / 51601.2 per second
-    Benchmark: Decrypt() 1000 bytes in 2.1582 usec on average / 463.349 MBPS / 463349 per second
-    Benchmark: Decrypt() 100 bytes in 0.45164 usec on average / 221.415 MBPS / 2.21415e+06 per second
-    Benchmark: Decrypt() 10 bytes in 0.32348 usec on average / 30.9138 MBPS / 3.09138e+06 per second
-    Benchmark: Decrypt() 1 bytes in 0.31879 usec on average / 3.13686 MBPS / 3.13686e+06 per second
-    +++ Test passed.
-
-    Running test 10 : 2 Million Random Message Stress Test
-    +++ Test passed.
-
-
-    Test summary:
-    Passed 11 tests of 11
-
-    All tests passed.
-~~~
-
-
-Contributors
-============
-
-* Christopher A. Taylor ( mrcatid@gmail.com ) : Author
-* Sam Hughes ( sam@rethinkdb.com ) : Fixed integer overflow in the API
+Thanks to Sam Hughes ( sam@rethinkdb.com ) for fixing an integer overflow vulnerability in an
+early version of the software.
 
