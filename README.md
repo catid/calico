@@ -1,76 +1,86 @@
-Calico
-======
+# Calico
+#### Strong, Fast, and Portable Authenticated Encryption
 
-Calico :: C++ Authenticated Encryption Library
+The Calico authenticated encryption library is designed to protect data sent
+between two endpoints on an untrusted network.  It provides protection against
+tampering of the data through replay or modification.  Calico encrypts the
+data so that it cannot be read by a third party.  Calico runs in constant-time
+to avoid side-channel attacks through execution timing or cache timing.
 
-The goal of Calico is to provide a sleak and speedy alternative to rolling your
-own authenticated encryption.  Calico is designed to encrypt small messages in
-memory before transmitting them over a UDP socket for low-latency applications.
+The Calico library can encrypt single packets or streams of data, so that it
+can be used for UDP-based or TCP-based protocols.  It uses the most efficient
+and portable methods available for speed, and it is also optimized for low-
+overhead: Only 11 bytes/message.  It is also optimized to reject invalid
+messages as fast as possible, roughly 5x faster than normal decryption.
 
-Calico is not a complete data security solution like OpenSSL.  Calico can be
-used as a component to build a secure tunnel over the Internet:  Usually two
-endpoints will share a secret key during a key agreement handshake.  After this
-happens, Calico can step in to encrypt and decrypt the session data.  Because
-it provides authenticated encryption, that means that it also prevents any
-tampering of the data.
-
-Calico only provides the math to make this happen; it does not open sockets or
-send packets over the Internet.  It will only encrypt or decrypt in memory, and
-then it will be the user's responsibility to transmit the result.  As a result
-it has no dependencies and is easy to reuse.
-
-Calico is not designed for use with TCP streams.  I do have a good design for
-supporting streams but it is not implemented because there is no need for it
-in any of the projects I am working on.  If you would like a stream mode just
-ask and I could turn one around in a couple of days.
-
-
-Why?
-====
-
-These days it seems everyone wants a ready-made package to just plug into their
-app and go.  So, this project is for the people who write those packages.  It
-provides good, modern approaches to authenticated encryption while remaining a
-small and focused codebase that you can just drop into your own software.
-
-Please consider this instead of using something slower with more overhead.
-And if you are rolling your own encryption code please use this one as a basis
-instead, because it does a lot of things right that are easy to botch, speaking
-from years of experience writing these sorts of libraries.
+Calico does not provide key agreement.  See the [Tabby](https://github.com/catid/tabby)
+library for an efficient and portable implementation of key agreement.  Calico
+also does not open any sockets for you - it only encodes and decodes the data.
+Furthermore Calico does not consume any randomness to operate.
 
 
 Benchmarks
 ==========
 
-Mac OS X 10.7.4 (2.7 GHz Intel Core i5)
+##### libcalico.a on Macbook Air (1.7 GHz Core i5-2557M Sandy Bridge, July 2011):
+
+Output of `make test`:
 
 ~~~
-     $ uname -a
-    Darwin kuang.local 11.4.0 Darwin Kernel Version 11.4.0: Mon Apr  9 19:32:15 PDT 2012; root:xnu-1699.26.8~1/RELEASE_X86_64 x86_64
-    $ clang++ --version
-    Apple clang version 3.1 (tags/Apple/clang-318.0.58) (based on LLVM 3.1svn)
-    Target: x86_64-apple-darwin11.4.0
-    Thread model: posix
+Running test 0 : Uninitialized
++++ Test passed.
 
-    Using -O4:
+Running test 1 : Data Integrity
++++ Test passed.
 
-    Benchmark: Encrypt() 10000 bytes in 16.0811 usec on average / 621.847 MBPS / 62184.7 per second
-    Benchmark: Encrypt() 1000 bytes in 1.64204 usec on average / 608.999 MBPS / 608999 per second
-    Benchmark: Encrypt() 100 bytes in 0.2316 usec on average / 431.779 MBPS / 4.31779e+06 per second
-    Benchmark: Encrypt() 10 bytes in 0.13549 usec on average / 73.8062 MBPS / 7.38062e+06 per second
-    Benchmark: Encrypt() 1 bytes in 0.13842 usec on average / 7.22439 MBPS / 7.22439e+06 per second
+Running test 2 : Integer Overflow Input
++++ Test passed.
 
-    Benchmark: Decrypt() drops 10000 corrupted bytes in 1.35998 usec on average / 7353.05 MBPS / 735305 per second
-    Benchmark: Decrypt() drops 1000 corrupted bytes in 0.25143 usec on average / 3977.25 MBPS / 3.97725e+06 per second
-    Benchmark: Decrypt() drops 100 corrupted bytes in 0.15385 usec on average / 649.984 MBPS / 6.49984e+06 per second
-    Benchmark: Decrypt() drops 10 corrupted bytes in 0.13845 usec on average / 72.2282 MBPS / 7.22282e+06 per second
-    Benchmark: Decrypt() drops 1 corrupted bytes in 0.13805 usec on average / 7.24375 MBPS / 7.24375e+06 per second
+Running test 3 : Wrong Key
++++ Test passed.
 
-    Benchmark: Decrypt() 10000 bytes in 14.9429 usec on average / 669.216 MBPS / 66921.6 per second
-    Benchmark: Decrypt() 1000 bytes in 1.6471 usec on average / 607.128 MBPS / 607128 per second
-    Benchmark: Decrypt() 100 bytes in 0.31462 usec on average / 317.844 MBPS / 3.17844e+06 per second
-    Benchmark: Decrypt() 10 bytes in 0.20617 usec on average / 48.5037 MBPS / 4.85037e+06 per second
-    Benchmark: Decrypt() 1 bytes in 0.20806 usec on average / 4.80631 MBPS / 4.80631e+06 per second
+Running test 4 : Replay Attack
++++ Test passed.
+
+Running test 5 : Replay Window
++++ Test passed.
+
+Running test 6 : Benchmark Initialize()
+Benchmark: Initialize() in 1.97422 usec on average / 506529 per second
++++ Test passed.
+
+Running test 7 : Benchmark Encrypt()
+Benchmark: Encrypt() 10000 bytes in 20.4203 usec on average / 489.709 MBPS / 48970.9 per second
+Benchmark: Encrypt() 1000 bytes in 2.33389 usec on average / 428.469 MBPS / 428469 per second
+Benchmark: Encrypt() 100 bytes in 0.35412 usec on average / 282.39 MBPS / 2.8239e+06 per second
+Benchmark: Encrypt() 10 bytes in 0.19131 usec on average / 52.2712 MBPS / 5.22712e+06 per second
+Benchmark: Encrypt() 1 bytes in 0.22187 usec on average / 4.50714 MBPS / 4.50714e+06 per second
++++ Test passed.
+
+Running test 8 : Benchmark Decrypt() Rejection
+Benchmark: Decrypt() drops 10000 corrupted bytes in 1.9216 usec on average / 5204 MBPS / 520400 per second
+Benchmark: Decrypt() drops 1000 corrupted bytes in 0.3846 usec on average / 2600.1 MBPS / 2.6001e+06 per second
+Benchmark: Decrypt() drops 100 corrupted bytes in 0.21331 usec on average / 468.801 MBPS / 4.68801e+06 per second
+Benchmark: Decrypt() drops 10 corrupted bytes in 0.23418 usec on average / 42.7022 MBPS / 4.27022e+06 per second
+Benchmark: Decrypt() drops 1 corrupted bytes in 0.21545 usec on average / 4.64145 MBPS / 4.64145e+06 per second
++++ Test passed.
+
+Running test 9 : Benchmark Decrypt() Accept
+Benchmark: Decrypt() 10000 bytes in 19.4561 usec on average / 513.977 MBPS / 51397.7 per second
+Benchmark: Decrypt() 1000 bytes in 2.07755 usec on average / 481.336 MBPS / 481336 per second
+Benchmark: Decrypt() 100 bytes in 0.39793 usec on average / 251.3 MBPS / 2.513e+06 per second
+Benchmark: Decrypt() 10 bytes in 0.29607 usec on average / 33.7758 MBPS / 3.37758e+06 per second
+Benchmark: Decrypt() 1 bytes in 0.27363 usec on average / 3.65457 MBPS / 3.65457e+06 per second
++++ Test passed.
+
+Running test 10 : 2 Million Random Message Stress Test
++++ Test passed.
+
+
+Test summary:
+Passed 11 tests of 11
+
+All tests passed.
 ~~~
 
 

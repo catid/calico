@@ -30,7 +30,7 @@
 #include "EndianNeutral.hpp"
 using namespace cat;
 
-static const int CHACHA_ROUNDS = 12;
+static const int CHACHA_ROUNDS = 14;
 
 #define CHACHA_REGISTERS \
 	u32 x[16];

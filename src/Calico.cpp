@@ -37,7 +37,6 @@ using namespace cat;
 
 #include <climits>
 
-
 // IV constants
 static const int IV_BYTES = 3;
 static const int IV_BITS = IV_BYTES * 8;
@@ -45,13 +44,14 @@ static const u32 IV_MSB = (1 << IV_BITS);
 static const u32 IV_MASK = (IV_MSB - 1);
 static const u32 IV_FUZZ = 0x9F286AD7;
 
-
 typedef struct {
 	antireplay_state window;
 	chacha_vmac_state local, remote;
+	u32 flag;
 } calico_internal_state;
 
 static bool m_initialized = false;
+static const u32 FLAG_KEYED = 0x6501ccef;
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,11 +73,11 @@ int _calico_init(int expected_version) {
 	return 0;
 }
 
-int calico_key(calico_state *S, int role, const char key[32]) {
+int calico_key(calico_state *S, int role, const void *key, int key_bytes) {
 	calico_internal_state *state = (calico_internal_state *)S;
 
 	// If input is invalid,
-	if (!m_initialized || !key || !state) {
+	if (!m_initialized || !key || !state || key_bytes != 32) {
 		return -1;
 	}
 
@@ -86,12 +86,15 @@ int calico_key(calico_state *S, int role, const char key[32]) {
 		return -1;
 	}
 
+	// Set flag to unkeyed
+	state->flag = 0;
+
 	// Expand key into two keys using ChaCha20:
 
 	static const int KEY_BYTES = 64;
 
 	char keys[KEY_BYTES + KEY_BYTES];
-	if (!chacha_key_expand(key, keys, sizeof(keys))) {
+	if (!chacha_key_expand((const char *)key, keys, sizeof(keys))) {
 		return -1;
 	}
 
@@ -117,15 +120,18 @@ int calico_key(calico_state *S, int role, const char key[32]) {
 
 	CAT_SECURE_OBJCLR(keys);
 
+	// Flag as keyed
+	state->flag = FLAG_KEYED;
+
 	return 0;
 }
 
 int calico_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes_ptr) {
 	calico_internal_state *state = (calico_internal_state *)S;
 
-	// If input is invalid,
+	// If input is invalid or Calico is not keyed,
 	if (!m_initialized || !state || !plaintext || !ciphertext ||
-		plaintext_bytes < 0 || !ciphertext_bytes_ptr) {
+		plaintext_bytes < 0 || !ciphertext_bytes_ptr || state->flag != FLAG_KEYED) {
 		return -1;
 	}
 
@@ -169,8 +175,9 @@ int calico_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, 
 int calico_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes) {
 	calico_internal_state *state = (calico_internal_state *)S;
 
-	// If input is invalid,
-	if (!m_initialized || !state || !ciphertext || !ciphertext_bytes || *ciphertext_bytes < 0) {
+	// If input is invalid or Calico object is not keyed,
+	if (!m_initialized || !state || !ciphertext || !ciphertext_bytes ||
+		*ciphertext_bytes < 0 || state->flag != FLAG_KEYED) {
 		return -1;
 	}
 
@@ -184,8 +191,6 @@ int calico_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes) {
 	if (plaintext_bytes < 0) {
 		return -1;
 	}
-
-	*ciphertext_bytes = -1;
 
 	u8 *overhead8 = reinterpret_cast<u8*>( ciphertext ) + plaintext_bytes;
 	u32 *overhead32 = reinterpret_cast<u32*>( overhead8 );

@@ -1,29 +1,33 @@
 #include <iostream>
+#include <cassert>
+#include <cstdlib>
 using namespace std;
 
-#include "Calico.hpp"
+#include "calico.h"
 #include "Clock.hpp"
 #include "AbyssinianPRNG.hpp"
 using namespace cat;
-using namespace calico;
 
 static Clock m_clock;
 
 typedef void (*TestFunction)();
 
 /*
- * Verify that the code reacts properly when used uninitialized
+ * Verify that the code reacts properly when used without a key
  */
 void UninitializedTest()
 {
-	Calico x;
-	char data[10 + Calico::OVERHEAD] = {0};
+	calico_state S;
 
-	if (x.Encrypt(data, 10, data, (int)sizeof(data)) != ERR_BAD_STATE)
-		throw "Encrypt: Did not get bad state";
+	char data[10 + CALICO_OVERHEAD] = {0};
+	int bytes = (int)sizeof(data);
 
-	if (x.Decrypt(data, (int)sizeof(data)) != ERR_BAD_STATE)
-		throw "Decrypt: Did not get bad state";
+	// Assert that the encryption function fails if it is unkeyed
+	assert(calico_encrypt(&S, data, 10, data, &bytes));
+
+	// Assert that the decryption function fails if it is unkeyed
+	bytes = (int)sizeof(data);
+	assert(calico_decrypt(&S, data, &bytes));
 }
 
 /*
@@ -31,62 +35,52 @@ void UninitializedTest()
  */
 void DataIntegrityTest()
 {
-	Calico x, y;
-	char orig_data[10000], enc_data[10000 + Calico::OVERHEAD + 1];
+	// Client and server states and room for encrypted data
+	calico_state c, s;
+	char orig_data[10000], enc_data[10000 + CALICO_OVERHEAD + 1];
 
 	char key[32] = {0};
-	const char *session_name = "Data Integrity Test";
-	int r;
+	int bytes;
 
 	{
-		if (x.Initialize(key, session_name, INITIATOR) != ERR_GROOVY)
-			throw "x.Initialize PACKET failed";
-		if (y.Initialize(key, session_name, RESPONDER) != ERR_GROOVY)
-			throw "y.Initialize PACKET failed";
+		assert(!calico_key(&c, CALICO_INITIATOR, key, sizeof(key)));
+		assert(!calico_key(&s, CALICO_RESPONDER, key, sizeof(key)));
 
-		if (x.Encrypt(enc_data, -1, enc_data, (int)sizeof(enc_data)) != ERR_BAD_INPUT)
-			throw "Does not check negative length";
+		// Verify that calico encrypt function checks negative length
+		bytes = (int)sizeof(enc_data);
+		assert(calico_encrypt(&c, enc_data, -1, enc_data, &bytes));
 
-		if (x.Encrypt(enc_data, 100, enc_data, 101) != ERR_TOO_SMALL)
-			throw "Does not check max length";
+		// Verify that calico encrypt function checks ciphertext buffer that is too small
+		bytes = 101;
+		assert(calico_encrypt(&c, enc_data, 100, enc_data, &bytes));
 
-		if (x.Encrypt(0, 100, enc_data, sizeof(enc_data)) != ERR_BAD_INPUT)
-			throw "Does not check null pointer";
-
-		if (x.Encrypt(enc_data, 100, 0, sizeof(enc_data)) != ERR_BAD_INPUT)
-			throw "Does not check null pointer";
+		// NULL pointer checks
+		bytes = (int)sizeof(enc_data);
+		assert(calico_encrypt(&c, 0, 100, enc_data, &bytes));
+		bytes = (int)sizeof(enc_data);
+		assert(calico_encrypt(&c, enc_data, 100, 0, &bytes));
+		assert(calico_encrypt(&c, enc_data, 100, enc_data, 0));
+		bytes = (int)sizeof(enc_data);
+		assert(calico_encrypt(0, enc_data, 100, enc_data, &bytes));
 
 		for (int ii = 0; ii < sizeof(orig_data); ++ii)
 			orig_data[ii] = ii;
 
 		for (int len = 0; len < 10000; ++len)
 		{
-			enc_data[len + Calico::OVERHEAD] = 'A';
+			enc_data[len + CALICO_OVERHEAD] = 'A';
 
-			int enclen = x.Encrypt(orig_data, len, enc_data, (int)sizeof(enc_data));
+			int enclen = (int)sizeof(enc_data);
+			assert(!calico_encrypt(&c, orig_data, len, enc_data, &enclen));
+			assert(enclen == len + CALICO_OVERHEAD);
 
-			if (enclen < 0)
-				throw "Encryption failed";
+			int declen = enclen;
+			assert(!calico_decrypt(&s, enc_data, &declen));
+			assert(len == declen);
 
-			if (enclen != len + Calico::OVERHEAD)
-				throw "Encrypted length is wrong";
+			assert(!memcmp(enc_data, orig_data, len));
 
-			int declen = y.Decrypt(enc_data, enclen);
-
-			if (declen < 0)
-			{
-				cerr << "Failure length " << len << endl;
-				throw Calico::GetErrorString(declen);
-			}
-
-			if (declen != len)
-				throw "Decrypted length is wrong";
-
-			if (0 != memcmp(enc_data, orig_data, len))
-				throw "Decrypted data does not match original data";
-
-			if (enc_data[len + Calico::OVERHEAD] != 'A')
-				throw "Corrupted past end of buffer";
+			assert(enc_data[len + CALICO_OVERHEAD] == 'A');
 		}
 	}
 }
@@ -99,29 +93,25 @@ void IntOverflowTest()
 	char xkey[32] = {0};
 	char ykey[32] = {1};
 
-	Calico x, y;
+	calico_state x, y;
+	assert(!calico_key(&x, CALICO_INITIATOR, xkey, sizeof(xkey)));
+	assert(!calico_key(&y, CALICO_RESPONDER, ykey, sizeof(ykey)));
 
-	if (x.Initialize(xkey, "Integer Overflow", INITIATOR) != ERR_GROOVY)
-		throw "Unable to initialize x";
+	char data[32 + CALICO_OVERHEAD] = {0};
 
-	if (y.Initialize(ykey, "Integer Overflow", RESPONDER) != ERR_GROOVY)
-		throw "Unable to initialize y";
-
-	char data[32 + Calico::OVERHEAD] = {0};
-
-	for (int data_len = INT_MAX - Calico::OVERHEAD + 1; data_len > 0; ++data_len) {
-		if (x.Encrypt(data, data_len, data, (int)sizeof(data)) != ERR_TOO_SMALL)
-			throw "Encrypt did not reject bad integer input";
+	for (int data_len = INT_MAX - CALICO_OVERHEAD + 1; data_len > 0; ++data_len) {
+		int bytes = (int)sizeof(data);
+		assert(calico_encrypt(&x, data, data_len, data, &bytes));
 	}
 
-	for (int data_len = INT_MIN; data_len < INT_MIN + Calico::OVERHEAD + 1; ++data_len) {
-		if (x.Encrypt(data, data_len, data, (int)sizeof(data)) != ERR_BAD_INPUT)
-			throw "Encrypt did not reject bad integer input";
+	for (int data_len = INT_MIN; data_len < INT_MIN + CALICO_OVERHEAD + 1; ++data_len) {
+		int bytes = (int)sizeof(data);
+		assert(calico_encrypt(&x, data, data_len, data, &bytes));
 	}
 
-	for (int data_len = INT_MIN; data_len  < INT_MIN + Calico::OVERHEAD + 10; ++data_len) {
-		if (x.Decrypt(data, data_len) != ERR_TOO_SMALL)
-			throw "Decrypt did not reject bad integer input";
+	for (int data_len = INT_MIN; data_len  < INT_MIN + CALICO_OVERHEAD + 10; ++data_len) {
+		int bytes = data_len;
+		assert(calico_decrypt(&y, data, &bytes));
 	}
 }
 
@@ -133,26 +123,23 @@ void WrongKeyTest()
 	char xkey[32] = {0};
 	char ykey[32] = {1};
 
-	Calico x, y;
+	calico_state x, y;
+	char data[32 + CALICO_OVERHEAD] = {0};
 
-	if (x.Initialize(xkey, "Wrong Key", INITIATOR) != ERR_GROOVY)
-		throw "Unable to initialize x";
+	assert(!calico_key(&x, CALICO_INITIATOR, xkey, sizeof(xkey)));
+	int bytes = (int)sizeof(data);
+	assert(!calico_encrypt(&x, data, 32, data, &bytes));
+	assert(bytes == sizeof(data));
 
-	if (y.Initialize(ykey, "Wrong Key", RESPONDER) != ERR_GROOVY)
-		throw "Unable to initialize y";
+	// Verify that it cannot be decrypted when the wrong key is used
+	assert(!calico_key(&y, CALICO_RESPONDER, ykey, sizeof(ykey)));
+	assert(bytes == sizeof(data));
+	assert(calico_decrypt(&y, data, &bytes));
 
-	char data[32 + Calico::OVERHEAD] = {0};
-
-	if (x.Encrypt(data, 32, data, (int)sizeof(data)) != sizeof(data))
-		throw "Encryption failed";
-
-	int r = y.Decrypt(data, (int)sizeof(data));
-
-	if (r != ERR_MAC_DROP && r != ERR_IV_DROP)
-	{
-		cerr << "Decrypt return value: " << Calico::GetErrorString(r) << endl;
-		throw "Did not drop due to MAC/IV failure!";
-	}
+	// Verify that it can be decrypted when the right key is used
+	assert(!calico_key(&y, CALICO_RESPONDER, xkey, sizeof(xkey)));
+	assert(bytes == sizeof(data));
+	assert(!calico_decrypt(&y, data, &bytes));
 }
 
 /*
@@ -162,40 +149,38 @@ void ReplayAttackTest()
 {
 	char key[32] = {0};
 
-	Calico x, y;
+	calico_state x, y;
+	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
+	assert(!calico_key(&y, CALICO_RESPONDER, key, sizeof(key)));
 
-	if (x.Initialize(key, "Replay Test", INITIATOR) != ERR_GROOVY)
-		throw "Unable to initialize x";
+	char data[32 + CALICO_OVERHEAD] = {0};
 
-	if (y.Initialize(key, "Replay Test", RESPONDER) != ERR_GROOVY)
-		throw "Unable to initialize y";
+	int bytes = (int)sizeof(data);
+	assert(!calico_encrypt(&x, data, 32, data, &bytes));
+	assert(bytes == sizeof(data));
 
-	char data[32 + Calico::OVERHEAD] = {0};
-
-	if (x.Encrypt(data, 32, data, (int)sizeof(data)) != sizeof(data))
-		throw "Encryption failed";
-
-	if (y.Decrypt(data, (int)sizeof(data)) != 32)
-		throw "Decryption failed";
+	assert(!calico_decrypt(&y, data, &bytes));
+	assert(bytes == 32);
 
 	// Re-use IV 0
 
-	if (x.Initialize(key, "Replay Test", INITIATOR) != ERR_GROOVY)
-		throw "Unable to initialize x(2)";
+	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
 
-	if (x.Encrypt(data, 32, data, (int)sizeof(data)) != sizeof(data))
-		throw "Encryption failed(2)";
+	bytes = (int)sizeof(data);
+	assert(!calico_encrypt(&x, data, 32, data, &bytes));
+	assert(bytes == sizeof(data));
 
-	if (y.Decrypt(data, (int)sizeof(data)) != ERR_IV_DROP)
-		throw "Did not catch replay attack for IV 0";
+	// Decryption should fail here since IV was reused
+	assert(calico_decrypt(&y, data, &bytes));
 
 	// Continue with IV 1
 
-	if (x.Encrypt(data, 32, data, (int)sizeof(data)) != sizeof(data))
-		throw "Encryption failed(3)";
+	bytes = (int)sizeof(data);
+	assert(!calico_encrypt(&x, data, 32, data, &bytes));
+	assert(bytes == sizeof(data));
 
-	if (y.Decrypt(data, (int)sizeof(data)) != 32)
-		throw "Decryption failed for IV 1";
+	assert(!calico_decrypt(&y, data, &bytes));
+	assert(bytes == 32);
 }
 
 /*
@@ -205,67 +190,69 @@ void ReplayWindowTest()
 {
 	char key[32] = {0};
 
-	Calico x, y;
+	calico_state x, y;
 
-	if (x.Initialize(key, "Replay Window Test", INITIATOR) != ERR_GROOVY)
-		throw "Unable to initialize x";
+	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
+	assert(!calico_key(&y, CALICO_RESPONDER, key, sizeof(key)));
 
-	if (y.Initialize(key, "Replay Window Test", RESPONDER) != ERR_GROOVY)
-		throw "Unable to initialize y";
-
-	char data[32 + Calico::OVERHEAD] = {0};
+	char data[32 + CALICO_OVERHEAD] = {0};
+	int bytes;
 
 	// Advance IV for x by 2048 (simulate dropping lots of packets)
 	for (int ii = 0; ii < 2048; ++ii)
 	{
-		if (x.Encrypt(data, 32, data, (int)sizeof(data)) != sizeof(data))
-			throw "Encryption failed";
+		bytes = (int)sizeof(data);
+		assert(!calico_encrypt(&x, data, 32, data, &bytes));
+		assert(bytes == sizeof(data));
 	}
 
 	// Deliver the last one
-	if (y.Decrypt(data, (int)sizeof(data)) != 32)
-		throw "Decryption failed";
+	assert(!calico_decrypt(&y, data, &bytes));
+	assert(bytes == 32);
 
 	// Now replay them all
 
-	if (x.Initialize(key, "Replay Window Test", INITIATOR) != ERR_GROOVY)
-		throw "Unable to initialize x(2)";
+	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
 
 	for (int ii = 0; ii < 1024; ++ii)
 	{
-		if (x.Encrypt(data, 32, data, (int)sizeof(data)) != sizeof(data))
-			throw "Encryption failed";
+		bytes = (int)sizeof(data);
+		assert(!calico_encrypt(&x, data, 32, data, &bytes));
+		assert(bytes == sizeof(data));
 
-		if (y.Decrypt(data, (int)sizeof(data)) != ERR_IV_DROP)
-			throw "Did not drop old packet";
+		// Verify IV drop
+		assert(calico_decrypt(&y, data, &bytes));
 	}
 
 	for (int ii = 1024; ii < 2047; ++ii)
 	{
-		if (x.Encrypt(data, 32, data, (int)sizeof(data)) != sizeof(data))
-			throw "Encryption failed";
+		bytes = (int)sizeof(data);
+		assert(!calico_encrypt(&x, data, 32, data, &bytes));
+		assert(bytes == sizeof(data));
 
-		if (y.Decrypt(data, (int)sizeof(data)) != 32)
-			throw "Did not accept out of order packet";
+		assert(!calico_decrypt(&y, data, &bytes));
+		assert(bytes == 32);
 	}
 
 	// Test replay of original packet
 
-	if (x.Encrypt(data, 32, data, (int)sizeof(data)) != sizeof(data))
-		throw "Encryption failed";
+	bytes = (int)sizeof(data);
+	assert(!calico_encrypt(&x, data, 32, data, &bytes));
+	assert(bytes == sizeof(data));
 
-	if (y.Decrypt(data, (int)sizeof(data)) != ERR_IV_DROP)
-		throw "Did not drop original packet";
+	// Verify that replay is dropped
+	assert(calico_decrypt(&y, data, &bytes));
 
 	// Test some forward movement
 
 	for (int ii = 0; ii < 1024; ++ii)
 	{
-		if (x.Encrypt(data, 32, data, (int)sizeof(data)) != sizeof(data))
-			throw "Encryption failed";
+		int bytes = (int)sizeof(data);
+		assert(!calico_encrypt(&x, data, 32, data, &bytes));
+		assert(bytes == sizeof(data));
 
-		if (y.Decrypt(data, (int)sizeof(data)) != 32)
-			throw "Did not accept new packet";
+		assert(!calico_decrypt(&y, data, &bytes));
+		assert(bytes == 32);
 	}
 }
 
@@ -280,10 +267,11 @@ void BenchmarkInitialize()
 
 	for (int ii = 0; ii < 100000; ++ii)
 	{
-		Calico x;
+		key[ii % 32] += 37;
 
-		if (x.Initialize(key, "Initialize Test", INITIATOR) != ERR_GROOVY)
-			throw "Unable to initialize INITIATOR";
+		calico_state x;
+
+		assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
 	}
 
 	double t1 = m_clock.usec();
@@ -300,14 +288,13 @@ void BenchmarkInitialize()
  */
 void BenchmarkEncrypt()
 {
-	char key[32 + 8] = {0};
-	Calico x;
+	char key[32] = {0};
+	calico_state x;
 
-	if (x.Initialize(key, "Encryption Test", INITIATOR) != ERR_GROOVY)
-		throw "Unable to initialize INITIATOR";
+	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
 
-	char orig[10000 + Calico::OVERHEAD] = {0};
-	char data[10000 + Calico::OVERHEAD] = {0};
+	char orig[10000 + CALICO_OVERHEAD] = {0};
+	char data[10000 + CALICO_OVERHEAD] = {0};
 
 	for (int bytes = 10000; bytes > 0; bytes /= 10)
 	{
@@ -315,8 +302,9 @@ void BenchmarkEncrypt()
 
 		for (int ii = 0; ii < 100000; ++ii)
 		{
-			if (x.Encrypt(orig, bytes, data, (int)sizeof(data)) != bytes + Calico::OVERHEAD)
-				throw "Encryption failed";
+			int databytes = (int)sizeof(data);
+			assert(!calico_encrypt(&x, orig, bytes, data, &databytes));
+			assert(databytes == bytes + CALICO_OVERHEAD);
 		}
 
 		double t1 = m_clock.usec();
@@ -336,21 +324,19 @@ void BenchmarkEncrypt()
  */
 void BenchmarkDecryptFail()
 {
-	char key[32 + 8] = {0};
-	Calico x, y;
+	char key[32] = {0};
+	calico_state x, y;
 
-	if (x.Initialize(key, "Decryption Fail Test", INITIATOR) != ERR_GROOVY)
-		throw "Unable to initialize x";
+	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
+	assert(!calico_key(&y, CALICO_RESPONDER, key, sizeof(key)));
 
-	if (y.Initialize(key, "Decryption Fail Test", RESPONDER) != ERR_GROOVY)
-		throw "Unable to initialize y";
-
-	char data[10000 + Calico::OVERHEAD] = {0};
+	char data[10000 + CALICO_OVERHEAD] = {0};
 
 	for (int bytes = 10000; bytes > 0; bytes /= 10)
 	{
-		if (x.Encrypt(data, bytes, data, (int)sizeof(data)) != bytes + Calico::OVERHEAD)
-			throw "Encryption failed";
+		int databytes = (int)sizeof(data);
+		assert(!calico_encrypt(&x, data, bytes, data, &databytes));
+		assert(databytes == bytes + CALICO_OVERHEAD);
 
 		data[0] ^= 1;
 
@@ -358,8 +344,7 @@ void BenchmarkDecryptFail()
 
 		for (int ii = 0; ii < 100000; ++ii)
 		{
-			if (y.Decrypt(data, bytes + Calico::OVERHEAD) != ERR_MAC_DROP)
-				throw "Did not drop due to MAC failure";
+			assert(calico_decrypt(&y, data, &databytes));
 		}
 
 		double t1 = m_clock.usec();
@@ -380,15 +365,12 @@ void BenchmarkDecryptFail()
 void BenchmarkDecryptSuccess()
 {
 	char key[32] = {0};
-	Calico x, y;
+	calico_state x, y;
 
-	if (x.Initialize(key, "Decryption Success Test", INITIATOR) != ERR_GROOVY)
-		throw "Unable to initialize x";
+	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
+	assert(!calico_key(&y, CALICO_RESPONDER, key, sizeof(key)));
 
-	if (y.Initialize(key, "Decryption Success Test", RESPONDER) != ERR_GROOVY)
-		throw "Unable to initialize y";
-
-	char data[10000 + Calico::OVERHEAD];
+	char data[10000 + CALICO_OVERHEAD];
 	char temp[sizeof(data)];
 
 	Abyssinian prng;
@@ -404,22 +386,19 @@ void BenchmarkDecryptSuccess()
 
 		for (int ii = 0; ii < 100000; ++ii)
 		{
-			if (x.Encrypt(temp, bytes, data, (int)sizeof(data)) != bytes + Calico::OVERHEAD)
-				throw "Encryption failed";
+			int databytes = (int)sizeof(data);
+			assert(!calico_encrypt(&x, temp, bytes, data, &databytes));
+			assert(databytes == bytes + CALICO_OVERHEAD);
 
 			double t0 = m_clock.usec();
 
-			int r = y.Decrypt(data, bytes + Calico::OVERHEAD);
-			if (r != bytes)
-			{
-				cerr << "Return code: " << Calico::GetErrorString(r) << endl;
-				throw "Decrypt failure";
-			}
+			assert(!calico_decrypt(&y, data, &databytes));
 
 			double t1 = m_clock.usec();
 
-			if (memcmp(data, temp, bytes))
-				throw "Data got corrupted";
+			assert(databytes == bytes);
+
+			assert(!memcmp(data, temp, bytes));
 
 			t_sum += t1 - t0;
 		}
@@ -439,8 +418,8 @@ void BenchmarkDecryptSuccess()
  */
 void StressTest()
 {
-	char data[10000 + Calico::OVERHEAD];
-	char orig[10000 + Calico::OVERHEAD];
+	char data[10000 + CALICO_OVERHEAD];
+	char orig[10000 + CALICO_OVERHEAD];
 
 	Abyssinian prng;
 	prng.Initialize(m_clock.msec(), Clock::cycles());
@@ -452,13 +431,10 @@ void StressTest()
 		for (int jj = 0; jj < 8; ++jj)
 			key[jj] = prng.Next();
 
-		Calico x, y;
+		calico_state x, y;
 
-		if (x.Initialize(key, "Stress Test", INITIATOR) != ERR_GROOVY)
-			throw "Unable to initialize x";
-
-		if (y.Initialize(key, "Stress Test", RESPONDER) != ERR_GROOVY)
-			throw "Unable to initialize y";
+		assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
+		assert(!calico_key(&y, CALICO_RESPONDER, key, sizeof(key)));
 
 		u32 *data_ptr = reinterpret_cast<u32*>( orig );
 
@@ -471,17 +447,16 @@ void StressTest()
 			for (int jj = 0; jj < (len + 3) / 4; ++jj)
 				data_ptr[jj] = prng.Next();
 
-			if (x.Encrypt(orig, len, data, sizeof(data)) != len + Calico::OVERHEAD)
-				throw "Encryption failed";
+			int databytes = (int)sizeof(data);
+			assert(!calico_encrypt(&x, orig, len, data, &databytes));
+			assert(databytes == len + CALICO_OVERHEAD);
 
 			// Add 5% packetloss
 			if (prng.Next() % 100 >= 5)
 			{
-				if (y.Decrypt(data, len + Calico::OVERHEAD) != len)
-					throw "Decryption failed";
-
-				if (memcmp(data, orig, len))
-					throw "Data corrupted in flight";
+				assert(!calico_decrypt(&y, data, &databytes));
+				assert(databytes == len);
+				assert(!memcmp(data, orig, databytes));
 			}
 
 			// Send y -> x
@@ -491,17 +466,16 @@ void StressTest()
 			for (int jj = 0; jj < (len + 3) / 4; ++jj)
 				data_ptr[jj] = prng.Next();
 
-			if (y.Encrypt(orig, len, data, sizeof(data)) != len + Calico::OVERHEAD)
-				throw "Encryption failed";
+			databytes = (int)sizeof(data);
+			assert(!calico_encrypt(&y, orig, len, data, &databytes));
+			assert(databytes == len + CALICO_OVERHEAD);
 
 			// Add 5% packetloss
 			if (prng.Next() % 100 >= 5)
 			{
-				if (x.Decrypt(data, len + Calico::OVERHEAD) != len)
-					throw "Decryption failed";
-
-				if (memcmp(data, orig, len))
-					throw "Data corrupted in flight";
+				assert(!calico_decrypt(&x, data, &databytes));
+				assert(databytes == len);
+				assert(!memcmp(data, orig, databytes));
 			}
 		}
 	}
@@ -542,6 +516,12 @@ int main()
 	int failures = 0, passes = 0, tests = 0;
 
 	m_clock.OnInitialize();
+
+	// Always initialize Calico and check its return value
+	// Note that using assertions in production code is a bad idea because on
+	// some platforms assert() is not compiled and the code will never run.
+
+	assert(!calico_init());
 
 	for (TestDescriptor *td = TEST_FUNCTIONS; td->function; ++td, ++index)
 	{
