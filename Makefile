@@ -9,7 +9,7 @@ CC = clang -m64
 OPTFLAGS = -O3
 DBGFLAGS = -g -O0 -DDEBUG
 CFLAGS = -Wall -fstrict-aliasing -I./libcat -I./include
-LIBNAME = libcalico.a
+LIBNAME = bin/libcalico.a
 LIBS =
 
 
@@ -51,12 +51,12 @@ library : $(calico_o)
 
 example : CFLAGS += -DUNIT_TEST $(OPTFLAGS)
 example : clean $(calico_example_o) library
-	$(CCPP) $(calico_example_o) $(LIBS) -L. -lcalico -o example
+	$(CCPP) $(calico_example_o) $(LIBS) -L./bin -lcalico -o example
 	./example
 
 test : CFLAGS += -DUNIT_TEST $(OPTFLAGS)
 test : clean $(calico_test_o) library
-	$(CCPP) $(calico_test_o) $(LIBS) -L. -lcalico -o test
+	$(CCPP) $(calico_test_o) $(LIBS) -L./bin -lcalico -o test
 	./test
 
 
@@ -108,5 +108,5 @@ calico_example.o : tests/calico_example.cpp
 
 clean :
 	git submodule update --init
-	-rm test libcalico.a $(shared_test_o) $(calico_test_o) $(calico_o)
+	-rm test bin/libcalico.a $(shared_test_o) $(calico_test_o) $(calico_o)
 

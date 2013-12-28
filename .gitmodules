@@ -1,9 +1,3 @@
-[submodule "blake2"]
-	path = blake2
-	url = https://github.com/BLAKE2/BLAKE2.git
 [submodule "libcat"]
 	path = libcat
 	url = https://github.com/catid/libcat.git
-[submodule "chacha-opt"]
-	path = chacha-opt
-	url = https://github.com/floodyberry/chacha-opt.git

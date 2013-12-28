@@ -16,7 +16,7 @@ messages as fast as possible, roughly 5x faster than normal decryption.
 Calico does not provide key agreement.  See the [Tabby](https://github.com/catid/tabby)
 library for an efficient and portable implementation of key agreement.  Calico
 also does not open any sockets for you - it only encodes and decodes the data.
-Furthermore Calico does not consume any randomness to operate.
+Calico does not consume any randomness to operate.
 
 
 Benchmarks
@@ -83,11 +83,11 @@ Passed 11 tests of 11
 All tests passed.
 ~~~
 
+## Building: Mac
 
-Getting Started
-===============
+## Usage
 
-The BLAKE2 code is referenced as a submodule, so run `git submodule update --init` to download the BLAKE2 code also.
+The libcat code is referenced as a submodule, so run `git submodule update --init` to download the BLAKE2 code also.
 
 The API has three functions:
 

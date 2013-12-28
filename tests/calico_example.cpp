@@ -24,9 +24,9 @@ int main()
 	// Never use the same secret key twice.  Always use a new, random key every
 	// time you call calico_key.
 
-	assert(!calico_key(&initiator, CALICO_INITIATOR, key));
+	assert(!calico_key(&initiator, CALICO_INITIATOR, key, sizeof(key)));
 
-	assert(!calico_key(&responder, CALICO_RESPONDER, key));
+	assert(!calico_key(&responder, CALICO_RESPONDER, key, sizeof(key)));
 
 	// Choose a message to send
 	const char *message = "The message was sent through the Calico secure tunnel successfully!";
