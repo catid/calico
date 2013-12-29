@@ -11,7 +11,7 @@ The Calico library can encrypt single packets or streams of data, so that it
 can be used for UDP-based or TCP-based protocols.  It uses the most efficient
 and portable methods available for speed, and it is also optimized for low
 overhead: Only 11 bytes/message.  It is also optimized to reject invalid
-messages as quickly as possible, roughly 5x faster than normal decryption.
+messages as quickly as possible, roughly 4x faster than normal decryption.
 
 Calico does not provide key agreement.  See the [Tabby](https://github.com/catid/tabby)
 library for an efficient and portable implementation of key agreement.  Calico
@@ -29,61 +29,37 @@ for message authentication.
 Output of `make test`:
 
 ~~~
-Running test 0 : Uninitialized
-+++ Test passed.
-
-Running test 1 : Data Integrity
-+++ Test passed.
-
-Running test 2 : Integer Overflow Input
-+++ Test passed.
-
-Running test 3 : Wrong Key
-+++ Test passed.
-
-Running test 4 : Replay Attack
-+++ Test passed.
-
-Running test 5 : Replay Window
-+++ Test passed.
-
 Running test 6 : Benchmark Initialize()
-Benchmark: Initialize() in 1.97422 usec on average / 506529 per second
+Benchmark: Initialize() in 0.72452 usec on average / 1.38022e+06 per second
 +++ Test passed.
 
 Running test 7 : Benchmark Encrypt()
-Benchmark: Encrypt() 10000 bytes in 20.4203 usec on average / 489.709 MBPS / 48970.9 per second
-Benchmark: Encrypt() 1000 bytes in 2.33389 usec on average / 428.469 MBPS / 428469 per second
-Benchmark: Encrypt() 100 bytes in 0.35412 usec on average / 282.39 MBPS / 2.8239e+06 per second
-Benchmark: Encrypt() 10 bytes in 0.19131 usec on average / 52.2712 MBPS / 5.22712e+06 per second
-Benchmark: Encrypt() 1 bytes in 0.22187 usec on average / 4.50714 MBPS / 4.50714e+06 per second
+Benchmark: Encrypt() 10000 bytes in 10.585 usec on average / 944.734 MBPS / 94473.4 per second
+Benchmark: Encrypt() 1000 bytes in 1.36371 usec on average / 733.294 MBPS / 733294 per second
+Benchmark: Encrypt() 100 bytes in 0.4026 usec on average / 248.385 MBPS / 2.48385e+06 per second
+Benchmark: Encrypt() 10 bytes in 0.24678 usec on average / 40.5219 MBPS / 4.05219e+06 per second
+Benchmark: Encrypt() 1 bytes in 0.18078 usec on average / 5.53159 MBPS / 5.53159e+06 per second
 +++ Test passed.
 
 Running test 8 : Benchmark Decrypt() Rejection
-Benchmark: Decrypt() drops 10000 corrupted bytes in 1.9216 usec on average / 5204 MBPS / 520400 per second
-Benchmark: Decrypt() drops 1000 corrupted bytes in 0.3846 usec on average / 2600.1 MBPS / 2.6001e+06 per second
-Benchmark: Decrypt() drops 100 corrupted bytes in 0.21331 usec on average / 468.801 MBPS / 4.68801e+06 per second
-Benchmark: Decrypt() drops 10 corrupted bytes in 0.23418 usec on average / 42.7022 MBPS / 4.27022e+06 per second
-Benchmark: Decrypt() drops 1 corrupted bytes in 0.21545 usec on average / 4.64145 MBPS / 4.64145e+06 per second
+Benchmark: Decrypt() drops 10000 corrupted bytes in 1.96555 usec on average / 5087.63 MBPS / 508763 per second
+Benchmark: Decrypt() drops 1000 corrupted bytes in 0.38561 usec on average / 2593.29 MBPS / 2.59329e+06 per second
+Benchmark: Decrypt() drops 100 corrupted bytes in 0.18851 usec on average / 530.476 MBPS / 5.30476e+06 per second
+Benchmark: Decrypt() drops 10 corrupted bytes in 0.20704 usec on average / 48.2998 MBPS / 4.82998e+06 per second
+Benchmark: Decrypt() drops 1 corrupted bytes in 0.18693 usec on average / 5.3496 MBPS / 5.3496e+06 per second
 +++ Test passed.
 
 Running test 9 : Benchmark Decrypt() Accept
-Benchmark: Decrypt() 10000 bytes in 19.4561 usec on average / 513.977 MBPS / 51397.7 per second
-Benchmark: Decrypt() 1000 bytes in 2.07755 usec on average / 481.336 MBPS / 481336 per second
-Benchmark: Decrypt() 100 bytes in 0.39793 usec on average / 251.3 MBPS / 2.513e+06 per second
-Benchmark: Decrypt() 10 bytes in 0.29607 usec on average / 33.7758 MBPS / 3.37758e+06 per second
-Benchmark: Decrypt() 1 bytes in 0.27363 usec on average / 3.65457 MBPS / 3.65457e+06 per second
+Benchmark: Decrypt() 10000 bytes in 10.9359 usec on average / 914.423 MBPS / 91442.3 per second
+Benchmark: Decrypt() 1000 bytes in 1.56365 usec on average / 639.529 MBPS / 639529 per second
+Benchmark: Decrypt() 100 bytes in 0.47076 usec on average / 212.422 MBPS / 2.12422e+06 per second
+Benchmark: Decrypt() 10 bytes in 0.30794 usec on average / 32.4739 MBPS / 3.24739e+06 per second
+Benchmark: Decrypt() 1 bytes in 0.31074 usec on average / 3.21812 MBPS / 3.21812e+06 per second
 +++ Test passed.
-
-Running test 10 : 2 Million Random Message Stress Test
-+++ Test passed.
-
-
-Test summary:
-Passed 11 tests of 11
-
-All tests passed.
 ~~~
+
+When over 1000 messages can be encrypted/decrypted in under a millisecond, encryption should not
+be a bottleneck for any network application.
 
 These tests were also re-run with valgrind, which took a lot longer. =)
 
@@ -116,10 +92,18 @@ libcat/SecureErase.*
 libcat/Platform.hpp
 libcat/Config.hpp
 
-TODO: chacha-opt files
+chacha-opt/chacha.h
+chacha-opt/chacha.c
+
+And a chacha implementation, for example:
+chacha-opt/chacha_blocks_ref.c
+chacha-opt/chacha_blocks_ssse3-64.S
 ~~~
 
 It should port well to any platform, since it does not use any inline assembly or OS-specific APIs.
+
+The reference version of ChaCha is good enough for a standard portable codebase, though to get good
+server performance you should pick the best version for your target.
 
 #### API Reference
 
@@ -153,9 +137,7 @@ All algorithms are free of timing attacks; no look-up tables or branches are tak
 
 To optimize the ChaCha function for servers and reduce the impact of using strong cryptography, the
 [chacha-opt](https://github.com/floodyberry/chacha-opt) implementation is employed when running on
-Intel x64 servers, which puts it on par with the built-in AES instruction.  AES was not used because
-it is exceptionally complex to implement for mobile devices in software, and ChaCha is much
-faster in software and much easier to audit due to its simplicity.
+Intel x64 machines.  The AES-NI instruction is almost twice as slow as this software.
 
 
 ## Credits
