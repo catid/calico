@@ -10,8 +10,9 @@ to avoid side-channel attacks through execution timing or cache timing.
 The Calico library can encrypt single packets or streams of data, so that it
 can be used for UDP-based or TCP-based protocols.  It uses the most efficient
 and portable methods available for speed, and it is also optimized for low
-overhead: Only 11 bytes/message.  It is also optimized to reject invalid
-messages as quickly as possible, roughly 4x faster than normal decryption.
+overhead: Only 11 bytes per datagram or 8 bytes per stream message.  It is
+also optimized to reject invalid messages as quickly as possible, roughly 4x
+faster than normal decryption.
 
 Calico does not provide key agreement.  See the [Tabby](https://github.com/catid/tabby)
 library for an efficient and portable implementation of key agreement.  Calico
@@ -139,7 +140,7 @@ To optimize the ChaCha function for servers and reduce the impact of using stron
 [chacha-opt](https://github.com/floodyberry/chacha-opt) implementation is employed when running on
 Intel x64 machines.  The AES-NI instruction is almost twice as slow as this software.
 
-VMAC was chosen over Poly1305 for better speed and good published analysis [1][2].
+VMAC was chosen over Poly1305 for better speed, simplicity, and good published analysis [1][2].
 
 The best known attack against ChaCha is on 7 rounds [3][4], so 14 rounds seems like more than enough of
 a security margin in trade for exceptional speed.
@@ -158,7 +159,6 @@ Cryptoanalysis of the ChaCha cipher used in Calico.
 
 ##### [4] ["Latin Dances Revisited: New Analytic Results of Salsa20 and ChaCha" (Ishiguro 2012)](https://eprint.iacr.org/2012/065.pdf)
 Updated analysis of ChaCha security.
-
 
 
 ## Credits
