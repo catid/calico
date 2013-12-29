@@ -416,6 +416,65 @@ void BenchmarkDecryptSuccess()
 }
 
 /*
+ * Use stream API
+ */
+void StreamModeTest() {
+	char data[10000 + CALICO_STREAM_OVERHEAD];
+	char orig[10000 + CALICO_STREAM_OVERHEAD];
+
+	Abyssinian prng;
+	prng.Initialize(m_clock.msec(), Clock::cycles());
+
+	for (int ii = 0; ii < 10; ++ii)
+	{
+		u32 key[8];
+
+		for (int jj = 0; jj < 8; ++jj)
+			key[jj] = prng.Next();
+
+		calico_state x, y;
+
+		assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
+		assert(!calico_key(&y, CALICO_RESPONDER, key, sizeof(key)));
+
+		u32 *data_ptr = reinterpret_cast<u32*>( orig );
+
+		for (int messages = 0; messages < 100; ++messages)
+		{
+			// Send x -> y
+
+			int len = prng.Next() % 10000;
+
+			for (int jj = 0; jj < (len + 3) / 4; ++jj)
+				data_ptr[jj] = prng.Next();
+
+			int databytes = (int)sizeof(data);
+			assert(!calico_stream_encrypt(&x, orig, len, data, &databytes));
+			assert(databytes == len + CALICO_STREAM_OVERHEAD);
+
+			assert(!calico_stream_decrypt(&y, data, &databytes));
+			assert(databytes == len);
+			assert(!memcmp(data, orig, databytes));
+
+			// Send y -> x
+
+			len = prng.Next() % 10000;
+
+			for (int jj = 0; jj < (len + 3) / 4; ++jj)
+				data_ptr[jj] = prng.Next();
+
+			databytes = (int)sizeof(data);
+			assert(!calico_stream_encrypt(&y, orig, len, data, &databytes));
+			assert(databytes == len + CALICO_STREAM_OVERHEAD);
+
+			assert(!calico_stream_decrypt(&x, data, &databytes));
+			assert(databytes == len);
+			assert(!memcmp(data, orig, databytes));
+		}
+	}
+}
+
+/*
  * Run a lot of random input
  */
 void StressTest()
@@ -505,8 +564,10 @@ TestDescriptor TEST_FUNCTIONS[] = {
 	{ BenchmarkInitialize, "Benchmark Initialize()" },
 	{ BenchmarkEncrypt, "Benchmark Encrypt()" },
 	{ BenchmarkDecryptFail, "Benchmark Decrypt() Rejection" },
-
 	{ BenchmarkDecryptSuccess, "Benchmark Decrypt() Accept" },
+
+	{ StreamModeTest, "Stream API Test" },
+
 	{ StressTest, "2 Million Random Message Stress Test" },
 
 	{ 0, 0 } // End of tests
