@@ -9,9 +9,9 @@ to avoid side-channel attacks through execution timing or cache timing.
 
 The Calico library can encrypt single packets or streams of data, so that it
 can be used for UDP-based or TCP-based protocols.  It uses the most efficient
-and portable methods available for speed, and it is also optimized for low-
+and portable methods available for speed, and it is also optimized for low
 overhead: Only 11 bytes/message.  It is also optimized to reject invalid
-messages as fast as possible, roughly 5x faster than normal decryption.
+messages as quickly as possible, roughly 5x faster than normal decryption.
 
 Calico does not provide key agreement.  See the [Tabby](https://github.com/catid/tabby)
 library for an efficient and portable implementation of key agreement.  Calico
@@ -19,7 +19,7 @@ also does not open any sockets for you - It only encodes and decodes the data.
 Calico does not consume any randomness to operate.
 
 Calico uses Chacha-20 for key expansion, ChaCha-14 for encryption, and VMAC
-for a message authentication code.
+for message authentication.
 
 
 ## Benchmarks
@@ -91,9 +91,9 @@ These tests were also re-run with valgrind, which took a lot longer. =)
 
 #### Example Usage
 
-For example usage, check out the [example test](https://github.com/catid/calico/master/tests/calico_example.cpp).
+For example usage, check out the [example test](https://github.com/catid/calico/blob/master/tests/calico_example.cpp).
 
-For more thorough usage, check out the [unit tester code](https://github.com/catid/calico/master/tests/calico_test.cpp).
+For more thorough usage, check out the [unit tester code](https://github.com/catid/calico/blob/master/tests/calico_test.cpp).
 
 #### Building: Mac
 
@@ -123,7 +123,7 @@ It should port well to any platform, since it does not use any inline assembly o
 
 #### API Reference
 
-Please refer to the [Calico header file](https://github.com/catid/calico/master/include/calico.h)
+Please refer to the [Calico header file](https://github.com/catid/calico/blob/master/include/calico.h)
 for the API reference.
 
 
@@ -165,8 +165,4 @@ find it useful and would like to buy me a coffee, consider [tipping](https://www
 
 Thanks to Sam Hughes ( sam@rethinkdb.com ) for fixing an integer overflow vulnerability in an
 early version of the software.
-
-TODO:
-Verify links in the README
-Use the hchacha function from chacha-opt on desktops
 
