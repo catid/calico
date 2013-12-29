@@ -139,6 +139,27 @@ To optimize the ChaCha function for servers and reduce the impact of using stron
 [chacha-opt](https://github.com/floodyberry/chacha-opt) implementation is employed when running on
 Intel x64 machines.  The AES-NI instruction is almost twice as slow as this software.
 
+VMAC was chosen over Poly1305 for better speed and good published analysis [1][2].
+
+The best known attack against ChaCha is on 7 rounds [3][4], so 14 rounds seems like more than enough of
+a security margin in trade for exceptional speed.
+
+
+## References
+
+##### [1] ["VHASH Security" (Dai Krovetz 2007)](https://eprint.iacr.org/2007/338.pdf)
+Security analysis of VHASH, the core algorithm of the MAC used by Calico.
+
+##### [2] ["Key-Recovery Attacks on Universal Hash Function based MAC Algorithms" (Handschuh Preneel 2008)](http://www.iacr.org/archive/crypto2008/51570145/51570145.pdf)
+Further security analysis of VHASH and other universal hash functions, exploring classes of weak keys and other failures.
+
+##### [3] ["New Features of Latin Dances: Analysis of Salsa, ChaCha, and Rumba" (Aumasson et al 2008)](https://eprint.iacr.org/2007/472.pdf)
+Cryptoanalysis of the ChaCha cipher used in Calico.
+
+##### [4] ["Latin Dances Revisited: New Analytic Results of Salsa20 and ChaCha" (Ishiguro 2012)](https://eprint.iacr.org/2012/065.pdf)
+Updated analysis of ChaCha security.
+
+
 
 ## Credits
 
