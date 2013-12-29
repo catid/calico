@@ -118,22 +118,11 @@ bool cat::chacha_key_expand(const char key[32], void *buffer, int bytes) {
 	return true;
 }
 
-bool cat::chacha_key(chacha_vmac_state *state, const char key[32]) {
-	if (!chacha_key_expand(key, state, sizeof(chacha_vmac_state))) {
-		return false;
-	}
-
-	vhash_set_key(&state->hash_state);
-
-	return true;
-}
-
-void cat::chacha_encrypt(chacha_vmac_state *state, u64 iv_counter, const void *from, void *to, int bytes)
+void cat::chacha_encrypt(chacha_vmac_state *state, const u32 chacha_key[8], u64 iv_counter, const void *from, void *to, int bytes)
 {
 	CHACHA_REGISTERS;
 
 	u64 block_counter = 0;
-	const u32 *chacha_key = state->chacha_key;
 
 	CHACHA_RUN(CHACHA_ROUNDS);
 
@@ -217,12 +206,11 @@ void cat::chacha_encrypt(chacha_vmac_state *state, u64 iv_counter, const void *f
 	}
 }
 
-bool cat::chacha_decrypt(chacha_vmac_state *state, u64 iv_counter, void *buffer, int bytes)
+bool cat::chacha_decrypt(chacha_vmac_state *state, const u32 chacha_key[8], u64 iv_counter, void *buffer, int bytes)
 {
 	CHACHA_REGISTERS;
 
 	u64 block_counter = 0;
-	const u32 *chacha_key = state->chacha_key;
 
 	CHACHA_RUN(CHACHA_ROUNDS);
 

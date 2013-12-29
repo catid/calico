@@ -29,16 +29,18 @@
 #include "AntiReplayWindow.hpp"
 using namespace cat;
 
-void cat::antireplay_init(antireplay_state *S, u64 local_iv, u64 remote_iv) {
-	S->local = local_iv;
-	S->remote = remote_iv;
+void cat::antireplay_init(antireplay_state *S, u64 iv_datagram_local, u64 iv_datagram_remote, u64 iv_stream_local, u64 iv_stream_remote) {
+	S->datagram_local = iv_datagram_local;
+	S->datagram_remote = iv_datagram_remote;
+	S->stream_local = iv_stream_local;
+	S->stream_remote = iv_stream_remote;
 
 	CAT_OBJCLR(S->bitmap);
 }
 
 bool cat::antireplay_check(antireplay_state *S, u64 remote_iv) {
 	// Check how far in the past this IV is
-	int delta = (int)(S->remote - remote_iv);
+	int delta = (int)(S->datagram_remote - remote_iv);
 
 	// If it is in the past,
 	if (delta >= 0)
@@ -56,7 +58,7 @@ bool cat::antireplay_check(antireplay_state *S, u64 remote_iv) {
 
 void cat::antireplay_accept(antireplay_state *S, u64 remote_iv) {
 	// Check how far in the past/future this IV is
-	int delta = (int)(remote_iv - S->remote);
+	int delta = (int)(remote_iv - S->datagram_remote);
 	u64 *bitmap = S->bitmap;
 
 	// If it is in the future,
@@ -101,7 +103,7 @@ void cat::antireplay_accept(antireplay_state *S, u64 remote_iv) {
 		}
 
 		// Only update the IV if the MAC was valid and the new IV is in the future
-		S->remote = remote_iv;
+		S->datagram_remote = remote_iv;
 	}
 	else // Process an out-of-order packet
 	{

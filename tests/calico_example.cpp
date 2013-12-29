@@ -34,17 +34,21 @@ int main()
 
 	// Declare a packet buffer to store the message
 	char packet[1500];
-	int packet_len = 1500;
+	int packet_len;
+
+
+	// UDP example:
 
 	// Encrypt the message into the packet, adding some overhead (11 bytes)
-	assert(!calico_encrypt(&initiator, message, message_length, packet, &packet_len));
+	packet_len = sizeof(packet);
+	assert(!calico_datagram_encrypt(&initiator, message, message_length, packet, &packet_len));
 
 
-	// <-- Pretend that right here we sent the "packet" over the Internet.
+	// <-- Pretend that right here we sent the UDP packet over the Internet.
 
 
 	// Decrypt the message from the packet
-	assert(!calico_decrypt(&responder, packet, &packet_len));
+	assert(!calico_datagram_decrypt(&responder, packet, &packet_len));
 
 	// The decrypted message size should match the original message size
 	assert(packet_len == message_length);
@@ -53,6 +57,29 @@ int main()
 	assert(!memcmp(message, packet, packet_len));
 
 	cout << packet << endl;
+
+
+	// TCP example:
+
+	// Encrypt the message into the packet, adding some overhead (8 bytes)
+	packet_len = sizeof(packet);
+	assert(!calico_stream_encrypt(&initiator, message, message_length, packet, &packet_len));
+
+
+	// <-- Pretend that right here we sent the TCP message over the Internet.
+
+
+	// Decrypt the message from the packet
+	assert(!calico_stream_decrypt(&responder, packet, &packet_len));
+
+	// The decrypted message size should match the original message size
+	assert(packet_len == message_length);
+
+	// And the decrypted message contents will match the original message
+	assert(!memcmp(message, packet, packet_len));
+
+	cout << packet << endl;
+
 	return 0;
 }
 
