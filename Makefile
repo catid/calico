@@ -8,7 +8,8 @@ CCPP = clang++ -m64
 CC = clang -m64
 OPTFLAGS = -O3
 DBGFLAGS = -g -O0 -DDEBUG
-CFLAGS = -Wall -fstrict-aliasing -I./libcat -I./include
+CFLAGS = -Wall -fstrict-aliasing -I./libcat -I./include -I./chacha-opt \
+		 -Dchacha_blocks_impl=chacha_blocks_ssse3 -Dhchacha_impl=hchacha
 LIBNAME = bin/libcalico.a
 LIBS =
 
@@ -17,7 +18,7 @@ LIBS =
 
 shared_test_o = Clock.o
 
-extern_o = 
+extern_o = chacha.o chacha_blocks_ssse3-64.o
 
 libcat_o = BitMath.o EndianNeutral.o SecureErase.o
 
@@ -76,9 +77,6 @@ BitMath.o : libcat/BitMath.cpp
 
 # Library objects
 
-calico.o : src/calico.cpp
-	$(CCPP) $(CFLAGS) -c src/calico.cpp
-
 AntiReplayWindow.o : src/AntiReplayWindow.cpp
 	$(CCPP) $(CFLAGS) -c src/AntiReplayWindow.cpp
 
@@ -90,6 +88,12 @@ ChaChaVMAC.o : src/ChaChaVMAC.cpp
 
 VHash.o : src/VHash.cpp
 	$(CCPP) $(CFLAGS) -c src/VHash.cpp
+
+chacha.o : chacha-opt/chacha.c
+	$(CC) $(CFLAGS) -c chacha-opt/chacha.c
+
+chacha_blocks_ssse3-64.o : chacha-opt/chacha_blocks_ssse3-64.S
+	$(CC) $(CFLAGS) -c chacha-opt/chacha_blocks_ssse3-64.S
 
 
 # Executable objects

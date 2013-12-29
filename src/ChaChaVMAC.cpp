@@ -30,106 +30,38 @@
 #include "EndianNeutral.hpp"
 using namespace cat;
 
-static const int CHACHA_ROUNDS = 14;
+#include "chacha.h"
 
-#define CHACHA_REGISTERS \
-	u32 x[16];
-
-#define CHACHA_STARTMIX \
-	x[0] = chacha_key[0]; x[1] = chacha_key[1]; x[2] = chacha_key[2]; x[3] = chacha_key[3]; \
-	x[4] = chacha_key[4]; x[5] = chacha_key[5]; x[6] = chacha_key[6]; x[7] = chacha_key[7]; \
-	x[8] = 0x61707865; x[9] = 0x3320646e; x[10] = 0x79622d32; x[11] = 0x6b206574; \
-	x[12] = (u32)block_counter; x[13] = (u32)(block_counter >> 32); \
-	x[14] = (u32)iv_counter; x[15] = (u32)(iv_counter >> 32);
-
-#define CHACHA_ENDMIX \
-	x[0] = getLE32(x[0] + chacha_key[0]); \
-	x[1] = getLE32(x[1] + chacha_key[1]); \
-	x[2] = getLE32(x[2] + chacha_key[2]); \
-	x[3] = getLE32(x[3] + chacha_key[3]); \
-	x[4] = getLE32(x[4] + chacha_key[4]); \
-	x[5] = getLE32(x[5] + chacha_key[5]); \
-	x[6] = getLE32(x[6] + chacha_key[6]); \
-	x[7] = getLE32(x[7] + chacha_key[7]); \
-	x[8] = getLE32(x[8] + 0x61707865); \
-	x[9] = getLE32(x[9] + 0x3320646e); \
-	x[10] = getLE32(x[10] + 0x79622d32); \
-	x[11] = getLE32(x[11] + 0x6b206574); \
-	x[12] = getLE32(x[12] + (u32)block_counter); \
-	x[13] = getLE32(x[13] + (u32)(block_counter >> 32)); \
-	x[14] = getLE32(x[14] + (u32)iv_counter); \
-	x[15] = getLE32(x[15] + (u32)(iv_counter >> 32));
-
-#define CHACHA_QUARTERROUND(A,B,C,D) \
-        x[A] += x[B]; x[D] = CAT_ROL32(x[D] ^ x[A], 16); \
-        x[C] += x[D]; x[B] = CAT_ROL32(x[B] ^ x[C], 12); \
-        x[A] += x[B]; x[D] = CAT_ROL32(x[D] ^ x[A], 8); \
-        x[C] += x[D]; x[B] = CAT_ROL32(x[B] ^ x[C], 7);
-
-#define CHACHA_RUN(ROUNDS) \
-		CHACHA_STARTMIX; \
-        for (int round = ROUNDS; round > 0; round -= 2) { \
-                CHACHA_QUARTERROUND(0, 4, 8,  12) \
-                CHACHA_QUARTERROUND(1, 5, 9,  13) \
-                CHACHA_QUARTERROUND(2, 6, 10, 14) \
-                CHACHA_QUARTERROUND(3, 7, 11, 15) \
-                CHACHA_QUARTERROUND(0, 5, 10, 15) \
-                CHACHA_QUARTERROUND(1, 6, 11, 12) \
-                CHACHA_QUARTERROUND(2, 7, 8,  13) \
-                CHACHA_QUARTERROUND(3, 4, 9,  14) \
-        } \
-		CHACHA_ENDMIX;
+// Using the internal chacha_blocks() function to speed up invalid message rejection
+extern "C" void chacha_blocks_impl(chacha_state_t *state, const uint8_t *in, uint8_t *out, size_t bytes);
 
 bool cat::chacha_key_expand(const char key[32], void *buffer, int bytes) {
 	if (bytes % 64) {
 		return false;
 	}
 
-#ifdef CAT_ENDIAN_LITTLE
-	const u32 *chacha_key = (const u32 *)key;
-#else
-	const u32 *chacha_key_raw = (const u32 *)key;
-	u32 chacha_key[8];
-	for (int ii = 0; ii < 8; ++ii) {
-		chacha_key[ii] = getLE(chacha_key_raw[ii]);
-	}
-#endif
+	chacha_iv iv = {{ 0 }};
 
-	u32 *output = (u32 *)buffer;
-	u64 block_counter = 0;
-	const u64 iv_counter = 0;
-
-	CHACHA_REGISTERS;
-
-	int blocks = bytes >> 6;
-	do {
-		CHACHA_RUN(20);
-
-		for (int ii = 0; ii < 16; ++ii) {
-			output[ii] = x[ii];
-		}
-		output += 16;
-
-		++block_counter;
-
-		--blocks;
-	} while (blocks > 0);
+	chacha((const chacha_key *)key, &iv, 0, (u8 *)buffer, bytes, 20);
 
 	return true;
 }
 
-void cat::chacha_encrypt(chacha_vmac_state *state, const u32 chacha_key[8], u64 iv_counter, const void *from, void *to, int bytes)
+void cat::chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv_counter, const void *from, void *to, int bytes)
 {
-	CHACHA_REGISTERS;
+	const u64 iv = getLE64(iv_counter);
 
-	u64 block_counter = 0;
+	chacha_state S;
+	chacha_init(&S, (const chacha_key *)key, (const chacha_iv *)&iv, 14);
 
-	CHACHA_RUN(CHACHA_ROUNDS);
+	u8 x[64];
+	const u32 *keys32 = reinterpret_cast<const u32 *>( x );
+	chacha_blocks_impl(&S, 0, x, 64);
 
 	// Store the last two keystream words for encrypting the MAC later
 	u32 mac_keystream[2] = {
-		x[14],
-		x[15]
+		keys32[14],
+		keys32[15]
 	};
 
 	// Encrypt the data:
@@ -142,7 +74,7 @@ void cat::chacha_encrypt(chacha_vmac_state *state, const u32 chacha_key[8], u64 
 	if (left > 56) {
 		// Encrypt using the full remainder of keystream
 		for (int ii = 0; ii < 14; ++ii) {
-			to32[ii] = from32[ii] ^ x[ii];
+			to32[ii] = from32[ii] ^ keys32[ii];
 		}
 
 		// Increment data pointer
@@ -150,44 +82,25 @@ void cat::chacha_encrypt(chacha_vmac_state *state, const u32 chacha_key[8], u64 
 		to32 += 14;
 		left -= 56;
 
-		// For each remaining full block,
-		do {
-			++block_counter;
-			CHACHA_RUN(CHACHA_ROUNDS);
-
-			if (left < 64) {
-				break;
-			}
-
-			for (int ii = 0; ii < 16; ++ii) {
-				to32[ii] = from32[ii] ^ x[ii];
-			}
-
-			from32 += 16;
-			to32 += 16;
-			left -= 64;
-		} while (left > 0);
-	}
-
-	// For remainder of final block,
-	if (left > 0) {
+		chacha_blocks_impl(&S, (const u8 *)from32, (u8 *)to32, left);
+	} else {
 		int words = left / 4;
 
 		for (int ii = 0; ii < words; ++ii) {
-			to32[ii] = from32[ii] ^ x[ii];
+			to32[ii] = from32[ii] ^ keys32[ii];
 		}
 
 		// Handle final <4 bytes
 		int remainder = left % 4;
 		if (remainder > 0) {
+			const u8 *keys8 = reinterpret_cast<const u8 *>( keys32 + words );
 			const u8 *from8 = reinterpret_cast<const u8 *>( from32 + words );
 			u8 *to8 = reinterpret_cast<u8 *>( to32 + words );
-			u32 final_key = getLE32(x[words]);
 
 			switch (remainder) {
-			case 3: to8[2] = from8[2] ^ (u8)(final_key >> 16);
-			case 2: to8[1] = from8[1] ^ (u8)(final_key >> 8);
-			case 1: to8[0] = from8[0] ^ (u8)final_key;
+			case 3: to8[2] = from8[2] ^ keys8[2];
+			case 2: to8[1] = from8[1] ^ keys8[1];
+			case 1: to8[0] = from8[0] ^ keys8[0];
 			}
 		}
 	}
@@ -206,18 +119,21 @@ void cat::chacha_encrypt(chacha_vmac_state *state, const u32 chacha_key[8], u64 
 	}
 }
 
-bool cat::chacha_decrypt(chacha_vmac_state *state, const u32 chacha_key[8], u64 iv_counter, void *buffer, int bytes)
+bool cat::chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv_counter, void *buffer, int bytes)
 {
-	CHACHA_REGISTERS;
+	const u64 iv = getLE64(iv_counter);
 
-	u64 block_counter = 0;
+	chacha_state S;
+	chacha_init(&S, (const chacha_key *)key, (const chacha_iv *)&iv, 14);
 
-	CHACHA_RUN(CHACHA_ROUNDS);
+	u8 x[64];
+	const u32 *keys32 = reinterpret_cast<const u32 *>( x );
+	chacha_blocks_impl(&S, 0, x, 64);
 
 	// Store the last two keystream words for decrypting the MAC
 	u32 mac_keystream[2] = {
-		x[14],
-		x[15]
+		keys32[14],
+		keys32[15]
 	};
 
 	// Recover and verify MAC:
@@ -246,49 +162,31 @@ bool cat::chacha_decrypt(chacha_vmac_state *state, const u32 chacha_key[8], u64 
 	if (left > 56) {
 		// Decrypt using the full remainder of keystream
 		for (int ii = 0; ii < 14; ++ii) {
-			text[ii] ^= x[ii];
+			text[ii] ^= keys32[ii];
 		}
 
 		// Increment data pointer
 		text += 14;
 		left -= 56;
 
-		// For each remaining full block,
-		do {
-			++block_counter;
-			CHACHA_RUN(CHACHA_ROUNDS);
-
-			if (left < 64) {
-				break;
-			}
-
-			for (int ii = 0; ii < 16; ++ii) {
-				text[ii] ^= x[ii];
-			}
-
-			text += 16;
-			left -= 64;
-		} while (left > 0);
-	}
-
-	// For remainder of final block,
-	if (left > 0) {
+		chacha_blocks_impl(&S, (const u8 *)text, (u8 *)text, left);
+	} else {
 		int words = left / 4;
 
 		for (int ii = 0; ii < words; ++ii) {
-			text[ii] ^= x[ii];
+			text[ii] ^= keys32[ii];
 		}
 
 		// Handle final <4 bytes
 		int remainder = left % 4;
 		if (remainder > 0) {
+			const u8 *keys8 = reinterpret_cast<const u8 *>( keys32 + words );
 			u8 *text8 = reinterpret_cast<u8 *>( text + words );
-			u32 final_key = getLE32(x[words]);
 
 			switch (remainder) {
-			case 3: text8[2] ^= (u8)(final_key >> 16);
-			case 2: text8[1] ^= (u8)(final_key >> 8);
-			case 1: text8[0] ^= (u8)final_key;
+			case 3: text8[2] ^= keys8[2];
+			case 2: text8[1] ^= keys8[1];
+			case 1: text8[0] ^= keys8[0];
 			}
 		}
 	}
