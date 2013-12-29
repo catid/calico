@@ -85,6 +85,8 @@ Passed 11 tests of 11
 All tests passed.
 ~~~
 
+These tests were also re-run with valgrind, which took a lot longer. =)
+
 ## Usage
 
 #### Example Usage
@@ -99,7 +101,8 @@ Simply run `make test`:  The output will be under `bin/libcalico.a`.  And it wil
 
 #### Building: Other
 
-The libcat code is referenced as a submodule, so run `git submodule update --init` to download the dependencies.
+The [libcat](https://github.com/catid/libcat) and [chacha-opt](https://github.com/floodyberry/chacha-opt)
+libraries are referenced as submodules, so run `git submodule update --init` to download these dependencies.
 
 The following files are required to build Calico:
 
@@ -112,6 +115,8 @@ libcat/SecureErase.*
 
 libcat/Platform.hpp
 libcat/Config.hpp
+
+TODO: chacha-opt files
 ~~~
 
 It should port well to any platform, since it does not use any inline assembly or OS-specific APIs.
@@ -126,22 +131,31 @@ for the API reference.
 
 The single 32 byte key provided to `calico_key` is expanded into keys for VHash, the first outgoing
 IV, and the 32 byte ChaCha-14 key.  Each side gets their own set of unique keys.  And each side
-decides which of the keys to use from the `role` parameter that is either `CALICO_INITIATOR` or
+decides which of the keys to use, based on the `role` parameter: Either `CALICO_INITIATOR` or
 `CALICO_RESPONDER`.
 
 During encryption, ChaCha-14 is keyed with the endpoint's key and with the message's unique IV number,
 which increments by 1 for each outgoing message.  The IV is truncated to the low 3 bytes and will be
-reconstructed by the other party based on the most recently accepted IV.  The message is encrypted,
-and the encrypted message is hashed with VHash.  VHash is a 64-bit Wegman-Carter hash.
+reconstructed by the other party based on the most recently accepted IV.  The IV value is also
+obfuscated to make the resulting ciphertext look more random.  The message is encrypted, and the
+encrypted message is hashed with VHash.  VHash is a 64-bit Wegman-Carter hash with faster performance
+than Poly1306.  The 64-bit hash value is encrypted with some of the ChaCha-14 keystream from the end
+of the first 128-byte block to protect it and turn it into a secure message authentication code.
 
-+ BLAKE2: Full 512-bit version used as a key derivation function.
-+ VMAC: Fast; a 64-bit message authentication code.
-+ ChaCha: 8 rounds for less security margin and higher speed.
+The obfuscated 3-byte IV is reconstructed by the recipient based on the most recently accepted IV.
+The IV value is validated to verify that a message with the same IV has not been received already to
+avoid replay attacks.  Using this IV and the sender's key, ChaCha-14 is keyed to generate the first
+128-byte block of keystream.  To reject invalid messages more quickly, the VHash value is recovered
+before decrypting the message and it is reconstructed by the recipient and verified to match.
+After the VMAC is validated, the message is decrypted in-place.
 
-All algorithms are free of timing attacks (no look-up tables or branches are
-taken based on the key material).
+All algorithms are free of timing attacks; no look-up tables or branches are taken based on the keys.
 
-All implementations are cleanroom versions of public domain algorithms.
+To optimize the ChaCha function for servers and reduce the impact of using strong cryptography, the
+[chacha-opt](https://github.com/floodyberry/chacha-opt) implementation is employed when running on
+Intel x64 servers, which puts it on par with the built-in AES instruction.  AES was not used because
+it is exceptionally complex to implement for mobile devices in software, and ChaCha is much
+faster in software and much easier to audit due to its simplicity.
 
 
 ## Credits
@@ -151,4 +165,8 @@ find it useful and would like to buy me a coffee, consider [tipping](https://www
 
 Thanks to Sam Hughes ( sam@rethinkdb.com ) for fixing an integer overflow vulnerability in an
 early version of the software.
+
+TODO:
+Verify links in the README
+Use the hchacha function from chacha-opt on desktops
 
