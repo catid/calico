@@ -123,7 +123,7 @@ which increments by 1 for each outgoing message.  The IV is truncated to the low
 reconstructed by the other party based on the most recently accepted IV.  The IV value is also
 obfuscated to make the resulting ciphertext look more random.  The message is encrypted, and the
 encrypted message is hashed with VHash.  VHash is a 64-bit Wegman-Carter hash with faster performance
-than Poly1306.  The 64-bit hash value is encrypted with some of the ChaCha-14 keystream from the end
+than Poly1305.  The 64-bit hash value is encrypted with some of the ChaCha-14 keystream from the end
 of the first 128-byte block to protect it and turn it into a secure message authentication code.
 
 The obfuscated 3-byte IV is reconstructed by the recipient based on the most recently accepted IV.
