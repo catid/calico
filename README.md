@@ -76,6 +76,25 @@ For more thorough usage, check out the [unit tester code](https://github.com/cat
 
 Simply run `make test`:  The output will be under `bin/libcalico.a`.  And it will run the unit-tester.
 
+##### Building: Windows
+
+You can link to the 64-bit `bin/libcalico.lib` static library and include
+`include/calico.h` to use Calico from an e.g. Visual Studio project.
+There is an example test project under `msvc2010/` that demonstrates using
+Calico from a Visual Studio project.
+
+The following instructions allow you to reproduce the `bin/libcalico.lib` binary:
+
+Download LLVM from [http://llvm.org/builds/](http://llvm.org/builds/) for Windows to C:\LLVM\.
+Download Mingw64 from [http://mingw-w64.sourceforge.net/](http://mingw-w64.sourceforge.net/) for Windows 64-bit to C:\mingw64\.
+
+~~~
+copy Makefile.Mingw64 Makefile
+c:\mingw64\bin\mingw32-make.exe release
+~~~
+
+This produces `bin/libcalico.lib`, which can be linked to an MSVC2010 build.
+
 #### Building: Other
 
 The [libcat](https://github.com/catid/libcat) and [chacha-opt](https://github.com/floodyberry/chacha-opt)
