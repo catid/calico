@@ -84,6 +84,8 @@ enum CalicoOverhead {
  * When finished with the Calico state object, call calico_cleanup().
  *
  * Preconditions:
+ * 	key_bytes = 32
+ * 	key = Valid pointer to 32 bytes of unique key material
  * 	role = CALICO_INITIATOR or CALICO_RESPONDER
  *
  * Returns 0 on success.
