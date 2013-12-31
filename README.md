@@ -158,7 +158,8 @@ independent of secret data.  It seems to also resist power analysis attacks thou
 
 To optimize the ChaCha function for servers and reduce the impact of using strong cryptography, the
 [chacha-opt](https://github.com/floodyberry/chacha-opt) implementation is employed when running on
-Intel x64 machines.  The AES-NI instruction is almost twice as slow as this software.
+Intel x64 machines.  ChaCha-14 has similar performance to the AES-NI instruction, while being much
+faster in software for mobile platforms.
 
 VMAC was chosen over Poly1305 for better speed, portability, and good published analysis [1][2].
 
