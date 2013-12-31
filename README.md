@@ -10,9 +10,9 @@ to avoid side-channel attacks through execution timing or cache timing.
 The Calico library can encrypt single packets or streams of data, so that it
 can be used for UDP-based or TCP-based protocols.  It uses the most efficient
 and portable methods available for speed, and it is also optimized for low
-overhead: Only 11 bytes per datagram or 8 bytes per stream message.  It is
-also optimized to reject invalid messages as quickly as possible, roughly 4x
-faster than normal decryption.
+overhead: Only 11 bytes per datagram or 8 bytes per stream message.  Calico
+rejects invalid messages as quickly as possible -- roughly 4x faster than
+normal decryption.
 
 Calico does not provide key agreement.  See the [Tabby](https://github.com/catid/tabby)
 library for an efficient and portable implementation of key agreement.  Calico
