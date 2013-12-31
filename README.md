@@ -31,31 +31,31 @@ Output of `make test`:
 
 ~~~
 Running test 6 : Benchmark Initialize()
-Benchmark: Initialize() in 0.72452 usec on average / 1.38022e+06 per second
+Benchmark: Initialize() in 0.61753 usec on average / 1.61935e+06 per second
 +++ Test passed.
 
 Running test 7 : Benchmark Encrypt()
-Benchmark: Encrypt() 10000 bytes in 10.585 usec on average / 944.734 MBPS / 94473.4 per second
-Benchmark: Encrypt() 1000 bytes in 1.36371 usec on average / 733.294 MBPS / 733294 per second
-Benchmark: Encrypt() 100 bytes in 0.4026 usec on average / 248.385 MBPS / 2.48385e+06 per second
-Benchmark: Encrypt() 10 bytes in 0.24678 usec on average / 40.5219 MBPS / 4.05219e+06 per second
-Benchmark: Encrypt() 1 bytes in 0.18078 usec on average / 5.53159 MBPS / 5.53159e+06 per second
+Benchmark: Encrypt() 10000 bytes in 9.35767 usec on average / 1068.64 MBPS / 106864 per second
+Benchmark: Encrypt() 1000 bytes in 1.24738 usec on average / 801.68 MBPS / 801680 per second
+Benchmark: Encrypt() 100 bytes in 0.35006 usec on average / 285.665 MBPS / 2.85665e+06 per second
+Benchmark: Encrypt() 10 bytes in 0.20681 usec on average / 48.3536 MBPS / 4.83536e+06 per second
+Benchmark: Encrypt() 1 bytes in 0.17159 usec on average / 5.82785 MBPS / 5.82785e+06 per second
 +++ Test passed.
 
 Running test 8 : Benchmark Decrypt() Rejection
-Benchmark: Decrypt() drops 10000 corrupted bytes in 1.96555 usec on average / 5087.63 MBPS / 508763 per second
-Benchmark: Decrypt() drops 1000 corrupted bytes in 0.38561 usec on average / 2593.29 MBPS / 2.59329e+06 per second
-Benchmark: Decrypt() drops 100 corrupted bytes in 0.18851 usec on average / 530.476 MBPS / 5.30476e+06 per second
-Benchmark: Decrypt() drops 10 corrupted bytes in 0.20704 usec on average / 48.2998 MBPS / 4.82998e+06 per second
-Benchmark: Decrypt() drops 1 corrupted bytes in 0.18693 usec on average / 5.3496 MBPS / 5.3496e+06 per second
+Benchmark: Decrypt() drops 10000 corrupted bytes in 1.77144 usec on average / 5645.12 MBPS / 564512 per second
+Benchmark: Decrypt() drops 1000 corrupted bytes in 0.31456 usec on average / 3179.04 MBPS / 3.17904e+06 per second
+Benchmark: Decrypt() drops 100 corrupted bytes in 0.19437 usec on average / 514.483 MBPS / 5.14483e+06 per second
+Benchmark: Decrypt() drops 10 corrupted bytes in 0.19448 usec on average / 51.4192 MBPS / 5.14192e+06 per second
+Benchmark: Decrypt() drops 1 corrupted bytes in 0.17031 usec on average / 5.87165 MBPS / 5.87165e+06 per second
 +++ Test passed.
 
 Running test 9 : Benchmark Decrypt() Accept
-Benchmark: Decrypt() 10000 bytes in 10.9359 usec on average / 914.423 MBPS / 91442.3 per second
-Benchmark: Decrypt() 1000 bytes in 1.56365 usec on average / 639.529 MBPS / 639529 per second
-Benchmark: Decrypt() 100 bytes in 0.47076 usec on average / 212.422 MBPS / 2.12422e+06 per second
-Benchmark: Decrypt() 10 bytes in 0.30794 usec on average / 32.4739 MBPS / 3.24739e+06 per second
-Benchmark: Decrypt() 1 bytes in 0.31074 usec on average / 3.21812 MBPS / 3.21812e+06 per second
+Benchmark: Decrypt() 10000 bytes in 9.4023 usec on average / 1063.57 MBPS / 106357 per second
+Benchmark: Decrypt() 1000 bytes in 1.35572 usec on average / 737.615 MBPS / 737615 per second
+Benchmark: Decrypt() 100 bytes in 0.44144 usec on average / 226.531 MBPS / 2.26531e+06 per second
+Benchmark: Decrypt() 10 bytes in 0.26523 usec on average / 37.7031 MBPS / 3.77031e+06 per second
+Benchmark: Decrypt() 1 bytes in 0.28565 usec on average / 3.50079 MBPS / 3.50079e+06 per second
 +++ Test passed.
 ~~~
 
@@ -165,6 +165,41 @@ VMAC was chosen over Poly1305 for better speed, portability, and good published 
 
 The best known attack against ChaCha is on 7 rounds [3][4], so 14 rounds seems like more than enough of
 a security margin in trade for exceptional speed.
+
+
+#### VMAC versus SipHash
+
+Note there is also a branch of Calico (called "siphash") that uses SipHash-2-4.  It works, and I
+was hoping to switch to SipHash since it's much simpler.  However, SipHash is significantly
+slower than VMAC.
+
+These are the results on my laptop from SipHash:
+
+~~~
+Benchmark: Decrypt() 10000 bytes in 16.8788 usec on average / 592.457 MBPS / 59245.7 per second
+Benchmark: Decrypt() 1000 bytes in 2.07803 usec on average / 481.225 MBPS / 481225 per second
+Benchmark: Decrypt() 100 bytes in 0.4967 usec on average / 201.329 MBPS / 2.01329e+06 per second
+Benchmark: Decrypt() 10 bytes in 0.24967 usec on average / 40.0529 MBPS / 4.00529e+06 per second
+Benchmark: Decrypt() 1 bytes in 0.25605 usec on average / 3.90549 MBPS / 3.90549e+06 per second
+~~~
+
+And these are the results from VMAC:
+
+~~~
+Benchmark: Decrypt() 10000 bytes in 9.4023 usec on average / 1063.57 MBPS / 106357 per second
+Benchmark: Decrypt() 1000 bytes in 1.35572 usec on average / 737.615 MBPS / 737615 per second
+Benchmark: Decrypt() 100 bytes in 0.44144 usec on average / 226.531 MBPS / 2.26531e+06 per second
+Benchmark: Decrypt() 10 bytes in 0.26523 usec on average / 37.7031 MBPS / 3.77031e+06 per second
+Benchmark: Decrypt() 1 bytes in 0.28565 usec on average / 3.50079 MBPS / 3.50079e+06 per second
+~~~
+
+Furthermore the advantage of rejecting messages before full decryption drops from 4x faster to
+only 2x faster when using SipHash.  For file transfer sizes > 1000 bytes, the VMAC implementation
+is getting close to twice as fast as the one based on SipHash.  And for very small messages they
+are so close in performance it hardly matters.
+
+If the performance was somewhat close I would accept lower performance for a cleaner codebase,
+but there is too big a gap in my opinion.
 
 
 ## References
