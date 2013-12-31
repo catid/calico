@@ -30,22 +30,19 @@
 #define CAT_CHACHA_VMAC_HPP
 
 #include "Platform.hpp"
-#include "VHash.hpp"
 
 namespace cat {
 
 
 typedef struct {
-	vhash_state hash_state;
+	char hash_key[16];
 	char datagram_key[32];
 	char stream_key[32];
 } chacha_vmac_state;
 
 bool chacha_key_expand(const char key[32], void *buffer, int bytes);
-
-void chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv, const void *from, void *to, int bytes);
-
-bool chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv, void *buffer, int bytes);
+void chacha_encrypt(const char hash_key[16], const char cipher_key[32], u64 iv, const void *from, void *to, int bytes);
+bool chacha_decrypt(const char hash_key[16], const char cipher_key[32], u64 iv, void *buffer, int bytes);
 
 
 } // namespace cat

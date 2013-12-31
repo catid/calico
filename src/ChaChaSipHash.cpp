@@ -26,8 +26,9 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "ChaChaVMAC.hpp"
+#include "ChaChaSipHash.hpp"
 #include "EndianNeutral.hpp"
+#include "SipHash.hpp"
 using namespace cat;
 
 #include "chacha.h"
@@ -47,12 +48,13 @@ bool cat::chacha_key_expand(const char key[32], void *buffer, int bytes) {
 	return true;
 }
 
-void cat::chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv_counter, const void *from, void *to, int bytes)
+void cat::chacha_encrypt(const char hash_key[16], const char cipher_key[32],
+						 u64 iv_counter, const void *from, void *to, int bytes)
 {
 	const u64 iv = getLE64(iv_counter);
 
 	chacha_state S;
-	chacha_init(&S, (const chacha_key *)key, (const chacha_iv *)&iv, 14);
+	chacha_init(&S, (const chacha_key *)cipher_key, (const chacha_iv *)&iv, 14);
 
 	u8 x[64];
 	const u32 *keys32 = reinterpret_cast<const u32 *>( x );
@@ -108,7 +110,7 @@ void cat::chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv_co
 	// Attach MAC:
 	{
 		// Hash the encrypted buffer
-		u64 mac = vhash(&state->hash_state, to, bytes);
+		u64 mac = siphash24(hash_key, to, bytes);
 
 		u8 *to8 = reinterpret_cast<u8 *>( to );
 		u32 *overhead = reinterpret_cast<u32 *>( to8 + bytes );
@@ -119,12 +121,13 @@ void cat::chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv_co
 	}
 }
 
-bool cat::chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv_counter, void *buffer, int bytes)
+bool cat::chacha_decrypt(const char hash_key[16], const char cipher_key[32],
+						 u64 iv_counter, void *buffer, int bytes)
 {
 	const u64 iv = getLE64(iv_counter);
 
 	chacha_state S;
-	chacha_init(&S, (const chacha_key *)key, (const chacha_iv *)&iv, 14);
+	chacha_init(&S, (const chacha_key *)cipher_key, (const chacha_iv *)&iv, 14);
 
 	u8 x[64];
 	const u32 *keys32 = reinterpret_cast<const u32 *>( x );
@@ -139,7 +142,7 @@ bool cat::chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv_co
 	// Recover and verify MAC:
 	{
 		// Hash the encrypted buffer
-		u64 mac = vhash(&state->hash_state, buffer, bytes);
+		u64 mac = siphash24(hash_key, buffer, bytes);
 
 		u8 *text8 = reinterpret_cast<u8 *>( buffer );
 		const u32 *overhead = reinterpret_cast<const u32 *>( text8 + bytes );

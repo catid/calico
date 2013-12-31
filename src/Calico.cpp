@@ -28,7 +28,7 @@
 
 #include "calico.h"
 
-#include "ChaChaVMAC.hpp"
+#include "ChaChaSipHash.hpp"
 #include "AntiReplayWindow.hpp"
 #include "EndianNeutral.hpp"
 #include "SecureErase.hpp"
@@ -91,7 +91,7 @@ int calico_key(calico_state *S, int role, const void *key, int key_bytes) {
 
 	// Expand key into two keys using ChaCha20:
 
-	static const int KEY_BYTES = sizeof(chacha_vmac_state) + 32;
+	static const int KEY_BYTES = sizeof(chacha_vmac_state) + 16;
 
 	char keys[KEY_BYTES + KEY_BYTES];
 	if (!chacha_key_expand((const char *)key, keys, sizeof(keys))) {
@@ -103,11 +103,9 @@ int calico_key(calico_state *S, int role, const void *key, int key_bytes) {
 	if (role == CALICO_INITIATOR) lkey += KEY_BYTES;
 	else rkey += KEY_BYTES;
 
-	// Set up the ChaCha and VHash keys
+	// Set up the ChaCha and SipHash keys
 	memcpy(&state->local, lkey, sizeof(chacha_vmac_state));
 	memcpy(&state->remote, rkey, sizeof(chacha_vmac_state));
-	vhash_set_key(&state->local.hash_state);
-	vhash_set_key(&state->remote.hash_state);
 
 	// Grab the IVs from the key bytes
 	const u64 *local_ivs = reinterpret_cast<const u64 *>( lkey + sizeof(chacha_vmac_state) );
@@ -151,7 +149,7 @@ int calico_datagram_encrypt(calico_state *S, const void *plaintext, int plaintex
 	// Select next IV
 	const u64 iv = state->window.datagram_local++;
 
-	chacha_encrypt(&state->local, state->local.datagram_key, iv, plaintext, ciphertext, plaintext_bytes);
+	chacha_encrypt(state->local.hash_key, state->local.datagram_key, iv, plaintext, ciphertext, plaintext_bytes);
 
 	// Attach IV to the end:
 
@@ -214,7 +212,7 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int *ciphertext_b
 	}
 
 	// Decrypt and check MAC
-	if (!chacha_decrypt(&state->remote, state->remote.datagram_key, iv, ciphertext, plaintext_bytes)) {
+	if (!chacha_decrypt(state->remote.hash_key, state->remote.datagram_key, iv, ciphertext, plaintext_bytes)) {
 		return -1;
 	}
 
@@ -249,7 +247,7 @@ int calico_stream_encrypt(calico_state *S, const void *plaintext, int plaintext_
 	// Select next IV
 	const u64 iv = state->window.stream_local++;
 
-	chacha_encrypt(&state->local, state->local.stream_key, iv, plaintext, ciphertext, plaintext_bytes);
+	chacha_encrypt(state->local.hash_key, state->local.stream_key, iv, plaintext, ciphertext, plaintext_bytes);
 
 	// Set ciphertext bytes
 	*ciphertext_bytes_ptr = plaintext_bytes + CALICO_STREAM_OVERHEAD;
@@ -280,7 +278,7 @@ int calico_stream_decrypt(calico_state *S, void *ciphertext, int *ciphertext_byt
 	u64 iv = state->window.stream_remote;
 
 	// Decrypt and check MAC
-	if (!chacha_decrypt(&state->remote, state->remote.stream_key, iv, ciphertext, plaintext_bytes)) {
+	if (!chacha_decrypt(state->remote.hash_key, state->remote.stream_key, iv, ciphertext, plaintext_bytes)) {
 		return -1;
 	}
 

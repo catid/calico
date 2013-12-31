@@ -1,5 +1,5 @@
 /*
-	Copyright (c) 2012-2013 Christopher A. Taylor.  All rights reserved.
+	Copyright (c) 2013 Christopher A. Taylor.  All rights reserved.
 
 	Redistribution and use in source and binary forms, with or without
 	modification, are permitted provided that the following conditions are met:
@@ -16,7 +16,7 @@
 	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 	AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 	IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-	ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+	ARE DISCLAIMED.	 IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
 	LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
 	CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
 	SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
@@ -26,52 +26,28 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef CAT_VHASH_HPP
-#define CAT_VHASH_HPP
+#ifndef CAT_SIPHASH_HPP
+#define CAT_SIPHASH_HPP
 
 #include "Platform.hpp"
 
 /*
-	Mostly copied from the original VHASH implementation
-	by Ted Krovetz (tdk@acm.org) and Wei Dai from 17 APR 08, 1700 PDT
-
-	References:
-
-	http://eprint.iacr.org/2007/338.pdf
-	http://www.fastcrypto.org/vmac/draft-krovetz-vmac-01.txt
-*/
+ * Portable C++ implementation of SipHash-2-4
+ *
+ * The algorithm was developed and analyzed by Bernstein and Aumasson in 2012:
+ * https://131002.net/siphash/siphash.pdf
+ *
+ * Based on the reference C version:
+ * https://131002.net/siphash/siphash24.c
+ */
 
 namespace cat {
 
 
-// VHash internal state
-typedef struct _vhash_state {
-	static const int BYTES = 128;
-	static const int WORDS = BYTES / 8; // 16
-
-	u64 nhkey[WORDS];
-	u64 polykey[2];
-	u64 l3key[2];
-} vhash_state;
-
-/*
- * Initialize the VHash session
- *
- * The state should already be filled with 160 bytes of key material
- *
- * This function will handle tweaking the input to work as a VHash state
- *
- * When done with the vhash_state object, it should be securely erased
- */
-void vhash_set_key(vhash_state *S);
-
-/*
- * Hashes the given data with the current VHash state
- */
-u64 vhash(vhash_state *S, const void *data, int bytes);
+u64 siphash24(const char key[16], const void *m, int len);
 
 
 } // namespace cat
 
-#endif // CAT_VHASH_HPP
+#endif // CAT_SIPHASH_HPP
 
