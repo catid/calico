@@ -1,4 +1,7 @@
 ## Calico Portable Build
+#### Strong, Fast, and Portable Authenticated Encryption
+
+See the full documentation at [https://github.com/catid/calico](https://github.com/catid/calico).
 
 #### Quick Setup
 
