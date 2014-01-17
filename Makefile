@@ -59,6 +59,11 @@ test : clean $(calico_test_o) library
 	$(CCPP) $(calico_test_o) $(LIBS) -L./bin -lcalico -o test
 	./test
 
+test-mobile : CFLAGS += -DUNIT_TEST $(OPTFLAGS)
+test-mobile : clean $(calico_test_o)
+	$(CCPP) $(calico_test_o) -L./calico-mobile -lcalico -o test
+	./test
+
 
 # Shared objects
 
