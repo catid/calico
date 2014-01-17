@@ -75,7 +75,8 @@ For more thorough usage, check out the [unit tester code](https://github.com/cat
 
 #### Building: Quick Setup
 
-The `calico-mobile` directory contains an easy-to-import set to C code that
+The [calico-mobile](https://github.com/catid/calico/tree/master/calico-mobile)
+directory contains an easy-to-import set to C code that
 also builds properly for mobile devices.  In a pinch you can use this code for
 desktops, although it will tend to run about 2.5x slower.
 
