@@ -72,6 +72,14 @@ For example usage, check out the [example test](https://github.com/catid/calico/
 
 For more thorough usage, check out the [unit tester code](https://github.com/catid/calico/blob/master/tests/calico_test.cpp).
 
+
+#### Building: Quick Setup
+
+The `calico-mobile` directory contains an easy-to-import set to C code that
+also builds properly for mobile devices.  In a pinch you can use this code for
+desktops, although it will tend to run about 2.5x slower.
+
+
 #### Building: Mac
 
 Simply run `make test`:  The output will be under `bin/libcalico.a`.  And it will run the unit-tester.
