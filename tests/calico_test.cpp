@@ -107,7 +107,6 @@ void IntOverflowTest()
 	for (u32 data_len = INT_MAX - CALICO_DATAGRAM_OVERHEAD + 1; data_len < (u32)INT_MIN; ++data_len) {
 		int bytes = (int)sizeof(data);
 		assert(calico_datagram_encrypt(&x, data, data_len, data, &bytes));
-		cout << data_len << endl;
 	}
 
 	for (int data_len = INT_MIN; data_len < INT_MIN + CALICO_DATAGRAM_OVERHEAD + 1; ++data_len) {
