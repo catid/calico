@@ -435,10 +435,10 @@ void StreamModeTest() {
 		for (int jj = 0; jj < 8; ++jj)
 			key[jj] = prng.Next();
 
-		calico_state x, y;
+		calico_stream_only x, y;
 
-		assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
-		assert(!calico_key(&y, CALICO_RESPONDER, key, sizeof(key)));
+		assert(!calico_key_stream_only(&x, CALICO_INITIATOR, key, sizeof(key)));
+		assert(!calico_key_stream_only(&y, CALICO_RESPONDER, key, sizeof(key)));
 
 		u32 *data_ptr = reinterpret_cast<u32*>( orig );
 
@@ -453,6 +453,7 @@ void StreamModeTest() {
 
 			int databytes = (int)sizeof(data);
 			assert(!calico_stream_encrypt(&x, orig, len, data, &databytes));
+			assert(calico_datagram_encrypt((calico_state*)&x, orig, len, data, &databytes));
 			assert(databytes == len + CALICO_STREAM_OVERHEAD);
 
 			assert(!calico_stream_decrypt(&y, data, &databytes));
@@ -468,6 +469,7 @@ void StreamModeTest() {
 
 			databytes = (int)sizeof(data);
 			assert(!calico_stream_encrypt(&y, orig, len, data, &databytes));
+			assert(calico_datagram_encrypt((calico_state*)&y, orig, len, data, &databytes));
 			assert(databytes == len + CALICO_STREAM_OVERHEAD);
 
 			assert(!calico_stream_decrypt(&x, data, &databytes));

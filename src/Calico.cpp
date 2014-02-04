@@ -26,6 +26,9 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <iostream>
+using namespace std;
+
 #include "calico.h"
 
 #include "ChaChaVMAC.hpp"
@@ -45,13 +48,17 @@ static const u32 IV_MASK = (IV_MSB - 1);
 static const u32 IV_FUZZ = 0x9F286AD7;
 
 typedef struct {
-	antireplay_state window;
-	chacha_vmac_state local, remote;
 	u32 flag;
+	chacha_vmac_state local, remote;
+	u64 stream_local, stream_remote;
+
+	// Extended version for datagrams
+	antireplay_state window;
 } calico_internal_state;
 
 static bool m_initialized = false;
-static const u32 FLAG_KEYED = 0x6501ccef;
+static const u32 FLAG_KEYED_STREAM = 0x6501ccef;
+static const u32 FLAG_KEYED_DATAGRAM = 0x6501ccfe;
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,6 +72,11 @@ int _calico_init(int expected_version) {
 
 	// If internal state is larger than opaque object,
 	if (sizeof(calico_internal_state) > sizeof(calico_state)) {
+		cout << "TEST: " << sizeof(calico_internal_state) << endl;
+		return -1;
+	}
+	if (sizeof(calico_internal_state) - sizeof(antireplay_state) > sizeof(calico_stream_only)) {
+		cout << "TEST: " << (sizeof(calico_internal_state) - sizeof(antireplay_state)) << endl;
 		return -1;
 	}
 
@@ -113,17 +125,72 @@ int calico_key(calico_state *S, int role, const void *key, int key_bytes) {
 	const u64 *local_ivs = reinterpret_cast<const u64 *>( lkey + sizeof(chacha_vmac_state) );
 	const u64 *remote_ivs = reinterpret_cast<const u64 *>( rkey + sizeof(chacha_vmac_state) );
 	u64 datagram_local = getLE(local_ivs[0]);
-	u64 stream_local = getLE(local_ivs[1]);
 	u64 datagram_remote = getLE(remote_ivs[0]);
-	u64 stream_remote = getLE(remote_ivs[1]);
 
-	// Initialize the IV subsystem
-	antireplay_init(&state->window, datagram_local, datagram_remote, stream_local, stream_remote);
+	// Initialize the IV subsystem for streams
+	state->stream_local = getLE(local_ivs[1]);
+	state->stream_remote = getLE(remote_ivs[1]);
+
+	// Initialize the IV subsystem for datagrams
+	antireplay_init(&state->window, datagram_local, datagram_remote);
 
 	CAT_SECURE_OBJCLR(keys);
 
 	// Flag as keyed
-	state->flag = FLAG_KEYED;
+	state->flag = FLAG_KEYED_DATAGRAM;
+
+	return 0;
+}
+
+// Stream-only version
+int calico_key_stream_only(calico_stream_only *S, int role, const void *key, int key_bytes) {
+	calico_internal_state *state = (calico_internal_state *)S;
+
+	// If input is invalid,
+	if (!m_initialized || !key || !state || key_bytes != 32) {
+		return -1;
+	}
+
+	// If role is invalid,
+	if (role != CALICO_INITIATOR && role != CALICO_RESPONDER) {
+		return -1;
+	}
+
+	// Set flag to unkeyed
+	state->flag = 0;
+
+	// Expand key into two keys using ChaCha20:
+
+	static const int KEY_BYTES = sizeof(chacha_vmac_state) + 32;
+
+	char keys[KEY_BYTES + KEY_BYTES];
+	if (!chacha_key_expand((const char *)key, keys, sizeof(keys))) {
+		return -1;
+	}
+
+	// Swap keys based on mode
+	char *lkey = keys, *rkey = keys;
+	if (role == CALICO_INITIATOR) lkey += KEY_BYTES;
+	else rkey += KEY_BYTES;
+
+	// Set up the ChaCha and VHash keys
+	memcpy(&state->local, lkey, sizeof(chacha_vmac_state));
+	memcpy(&state->remote, rkey, sizeof(chacha_vmac_state));
+	vhash_set_key(&state->local.hash_state);
+	vhash_set_key(&state->remote.hash_state);
+
+	// Grab the IVs from the key bytes
+	const u64 *local_ivs = reinterpret_cast<const u64 *>( lkey + sizeof(chacha_vmac_state) );
+	const u64 *remote_ivs = reinterpret_cast<const u64 *>( rkey + sizeof(chacha_vmac_state) );
+
+	// Initialize the IV subsystem for streams
+	state->stream_local = getLE(local_ivs[1]);
+	state->stream_remote = getLE(remote_ivs[1]);
+
+	CAT_SECURE_OBJCLR(keys);
+
+	// Flag as keyed
+	state->flag = FLAG_KEYED_STREAM;
 
 	return 0;
 }
@@ -133,7 +200,7 @@ int calico_datagram_encrypt(calico_state *S, const void *plaintext, int plaintex
 
 	// If input is invalid or Calico is not keyed,
 	if (!m_initialized || !state || !plaintext || !ciphertext ||
-		plaintext_bytes < 0 || !ciphertext_bytes_ptr || state->flag != FLAG_KEYED) {
+		plaintext_bytes < 0 || !ciphertext_bytes_ptr || state->flag != FLAG_KEYED_DATAGRAM) {
 		return -1;
 	}
 
@@ -179,7 +246,7 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int *ciphertext_b
 
 	// If input is invalid or Calico object is not keyed,
 	if (!m_initialized || !state || !ciphertext || !ciphertext_bytes ||
-		*ciphertext_bytes < 0 || state->flag != FLAG_KEYED) {
+		*ciphertext_bytes < 0 || state->flag != FLAG_KEYED_DATAGRAM) {
 		return -1;
 	}
 
@@ -226,12 +293,13 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int *ciphertext_b
 	return 0;
 }
 
-int calico_stream_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes_ptr) {
+int calico_stream_encrypt(void *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes_ptr) {
 	calico_internal_state *state = (calico_internal_state *)S;
 
 	// If input is invalid or Calico is not keyed,
 	if (!m_initialized || !state || !plaintext || !ciphertext ||
-		plaintext_bytes < 0 || !ciphertext_bytes_ptr || state->flag != FLAG_KEYED) {
+		plaintext_bytes < 0 || !ciphertext_bytes_ptr ||
+		(state->flag != FLAG_KEYED_STREAM && state->flag != FLAG_KEYED_DATAGRAM)) {
 		return -1;
 	}
 
@@ -247,7 +315,7 @@ int calico_stream_encrypt(calico_state *S, const void *plaintext, int plaintext_
 	}
 
 	// Select next IV
-	const u64 iv = state->window.stream_local++;
+	const u64 iv = state->stream_local++;
 
 	chacha_encrypt(&state->local, state->local.stream_key, iv, plaintext, ciphertext, plaintext_bytes);
 
@@ -257,12 +325,13 @@ int calico_stream_encrypt(calico_state *S, const void *plaintext, int plaintext_
 	return 0;
 }
 
-int calico_stream_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes) {
+int calico_stream_decrypt(void *S, void *ciphertext, int *ciphertext_bytes) {
 	calico_internal_state *state = (calico_internal_state *)S;
 
 	// If input is invalid or Calico object is not keyed,
 	if (!m_initialized || !state || !ciphertext || !ciphertext_bytes ||
-		*ciphertext_bytes < 0 || state->flag != FLAG_KEYED) {
+		*ciphertext_bytes < 0 ||
+		(state->flag != FLAG_KEYED_STREAM && state->flag != FLAG_KEYED_DATAGRAM)) {
 		return -1;
 	}
 
@@ -277,7 +346,7 @@ int calico_stream_decrypt(calico_state *S, void *ciphertext, int *ciphertext_byt
 		return -1;
 	}
 
-	u64 iv = state->window.stream_remote;
+	u64 iv = state->stream_remote;
 
 	// Decrypt and check MAC
 	if (!chacha_decrypt(&state->remote, state->remote.stream_key, iv, ciphertext, plaintext_bytes)) {
@@ -285,16 +354,22 @@ int calico_stream_decrypt(calico_state *S, void *ciphertext, int *ciphertext_byt
 	}
 
 	// Advance IV on success
-	state->window.stream_remote = iv + 1;
+	state->stream_remote = iv + 1;
 
 	*ciphertext_bytes = plaintext_bytes;
 
 	return 0;
 }
 
-void calico_cleanup(calico_state *S) {
-	if (!S) {
-		cat_secure_erase(S, sizeof(calico_internal_state));
+void calico_cleanup(void *S) {
+	calico_internal_state *state = (calico_internal_state *)S;
+
+	if (state) {
+		if (state->flag == FLAG_KEYED_STREAM) {
+			cat_secure_erase(S, sizeof(calico_stream_only));
+		} else if (state->flag == FLAG_KEYED_DATAGRAM) {
+			cat_secure_erase(S, sizeof(calico_state));
+		}
 	}
 }
 

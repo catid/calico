@@ -29,11 +29,9 @@
 #include "AntiReplayWindow.hpp"
 using namespace cat;
 
-void cat::antireplay_init(antireplay_state *S, u64 iv_datagram_local, u64 iv_datagram_remote, u64 iv_stream_local, u64 iv_stream_remote) {
+void cat::antireplay_init(antireplay_state *S, u64 iv_datagram_local, u64 iv_datagram_remote) {
 	S->datagram_local = iv_datagram_local;
 	S->datagram_remote = iv_datagram_remote;
-	S->stream_local = iv_stream_local;
-	S->stream_remote = iv_stream_remote;
 
 	CAT_OBJCLR(S->bitmap);
 }
