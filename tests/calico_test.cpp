@@ -22,15 +22,15 @@ void UninitializedTest()
 {
 	calico_state S;
 
-	char data[10 + CALICO_DATAGRAM_OVERHEAD] = {0};
+	char overhead[CALICO_DATAGRAM_OVERHEAD];
+	char data[10] = {0};
 	int bytes = (int)sizeof(data);
 
 	// Assert that the encryption function fails if it is unkeyed
-	assert(calico_datagram_encrypt(&S, data, 10, data, &bytes));
+	assert(calico_datagram_encrypt(&S, data, data, bytes, overhead));
 
 	// Assert that the decryption function fails if it is unkeyed
-	bytes = (int)sizeof(data);
-	assert(calico_datagram_decrypt(&S, data, &bytes));
+	assert(calico_datagram_decrypt(&S, data, bytes, overhead));
 }
 
 /*
@@ -40,83 +40,38 @@ void DataIntegrityTest()
 {
 	// Client and server states and room for encrypted data
 	calico_state c, s;
-	char orig_data[10000], enc_data[10000 + CALICO_DATAGRAM_OVERHEAD + 1];
+	char orig_data[10000], enc_data[10000 + 1];
+	char overhead[CALICO_DATAGRAM_OVERHEAD];
 
 	char key[32] = {0};
-	int bytes;
 
 	{
 		assert(!calico_key(&c, CALICO_INITIATOR, key, sizeof(key)));
 		assert(!calico_key(&s, CALICO_RESPONDER, key, sizeof(key)));
 
 		// Verify that calico encrypt function checks negative length
-		bytes = (int)sizeof(enc_data);
-		assert(calico_datagram_encrypt(&c, enc_data, -1, enc_data, &bytes));
-
-		// Verify that calico encrypt function checks ciphertext buffer that is too small
-		bytes = 101;
-		assert(calico_datagram_encrypt(&c, enc_data, 100, enc_data, &bytes));
+		assert(calico_datagram_encrypt(&c, enc_data, enc_data, -1, overhead));
 
 		// NULL pointer checks
-		bytes = (int)sizeof(enc_data);
-		assert(calico_datagram_encrypt(&c, 0, 100, enc_data, &bytes));
-		bytes = (int)sizeof(enc_data);
-		assert(calico_datagram_encrypt(&c, enc_data, 100, 0, &bytes));
-		assert(calico_datagram_encrypt(&c, enc_data, 100, enc_data, 0));
-		bytes = (int)sizeof(enc_data);
-		assert(calico_datagram_encrypt(0, enc_data, 100, enc_data, &bytes));
+		assert(calico_datagram_encrypt(&c, 0, enc_data, 100, overhead));
+		assert(calico_datagram_encrypt(0, enc_data, enc_data, 100, overhead));
+		assert(calico_datagram_encrypt(&c, enc_data, 0, 100, overhead));
+		assert(calico_datagram_encrypt(&c, enc_data, enc_data, 100, 0));
 
-		for (int ii = 0; ii < sizeof(orig_data); ++ii)
+		for (int ii = 0; ii < sizeof(orig_data); ++ii) {
 			orig_data[ii] = ii;
+		}
 
-		for (int len = 0; len < 10000; ++len)
-		{
-			enc_data[len + CALICO_DATAGRAM_OVERHEAD] = 'A';
+		for (int len = 0; len < 10000; ++len) {
+			enc_data[len] = 'A';
 
-			int enclen = (int)sizeof(enc_data);
-			assert(!calico_datagram_encrypt(&c, orig_data, len, enc_data, &enclen));
-			assert(enclen == len + CALICO_DATAGRAM_OVERHEAD);
-
-			int declen = enclen;
-			assert(!calico_datagram_decrypt(&s, enc_data, &declen));
-			assert(len == declen);
+			assert(!calico_datagram_encrypt(&c, enc_data, orig_data, len, overhead));
+			assert(!calico_datagram_decrypt(&c, enc_data, len, overhead));
 
 			assert(!memcmp(enc_data, orig_data, len));
 
-			assert(enc_data[len + CALICO_DATAGRAM_OVERHEAD] == 'A');
+			assert(enc_data[len] == 'A');
 		}
-	}
-}
-
-/*
- * Test verifying that large integer input to the API will not cause crashes or other issues
- */
-void IntOverflowTest()
-{
-	char xkey[32] = {0};
-	char ykey[32] = {1};
-
-	calico_state x, y;
-	assert(!calico_key(&x, CALICO_INITIATOR, xkey, sizeof(xkey)));
-	assert(!calico_key(&y, CALICO_RESPONDER, ykey, sizeof(ykey)));
-
-	char data[32 + CALICO_DATAGRAM_OVERHEAD] = {0};
-
-	// Signed integers in C have undefined overflow after increment, but unsigned integers have reliable
-	// behavior so u32 is used here.
-	for (u32 data_len = INT_MAX - CALICO_DATAGRAM_OVERHEAD + 1; data_len < (u32)INT_MIN; ++data_len) {
-		int bytes = (int)sizeof(data);
-		assert(calico_datagram_encrypt(&x, data, data_len, data, &bytes));
-	}
-
-	for (int data_len = INT_MIN; data_len < INT_MIN + CALICO_DATAGRAM_OVERHEAD + 1; ++data_len) {
-		int bytes = (int)sizeof(data);
-		assert(calico_datagram_encrypt(&x, data, data_len, data, &bytes));
-	}
-
-	for (int data_len = INT_MIN; data_len  < INT_MIN + CALICO_DATAGRAM_OVERHEAD + 10; ++data_len) {
-		int bytes = data_len;
-		assert(calico_datagram_decrypt(&y, data, &bytes));
 	}
 }
 
@@ -129,21 +84,18 @@ void WrongKeyTest()
 	char ykey[32] = {1};
 
 	calico_state x, y;
-	char data[32 + CALICO_DATAGRAM_OVERHEAD] = {0};
+	char data[32] = {0};
+	char overhead[CALICO_DATAGRAM_OVERHEAD];
 
 	assert(!calico_key(&x, CALICO_INITIATOR, xkey, sizeof(xkey)));
-	int bytes = (int)sizeof(data);
-	assert(!calico_datagram_encrypt(&x, data, 32, data, &bytes));
-	assert(bytes == sizeof(data));
+	assert(!calico_datagram_encrypt(&x, data, data, 32, overhead));
 
 	// Verify that it cannot be decrypted when the wrong key is used
 	assert(!calico_key(&y, CALICO_RESPONDER, ykey, sizeof(ykey)));
-	assert(bytes == sizeof(data));
 	assert(calico_datagram_decrypt(&y, data, &bytes));
 
 	// Verify that it can be decrypted when the right key is used
 	assert(!calico_key(&y, CALICO_RESPONDER, xkey, sizeof(xkey)));
-	assert(bytes == sizeof(data));
 	assert(!calico_datagram_decrypt(&y, data, &bytes));
 }
 
@@ -513,7 +465,7 @@ void StressTest()
 			for (int jj = 0; jj < (len + 3) / 4; ++jj)
 				data_ptr[jj] = prng.Next();
 
-			int databytes = (int)sizeof(data);
+			int databytes = len;
 			assert(!calico_datagram_encrypt(&x, orig, len, data, &databytes));
 			assert(databytes == len + CALICO_DATAGRAM_OVERHEAD);
 
@@ -532,7 +484,7 @@ void StressTest()
 			for (int jj = 0; jj < (len + 3) / 4; ++jj)
 				data_ptr[jj] = prng.Next();
 
-			databytes = (int)sizeof(data);
+			databytes = len;
 			assert(!calico_datagram_encrypt(&y, orig, len, data, &databytes));
 			assert(databytes == len + CALICO_DATAGRAM_OVERHEAD);
 
@@ -559,8 +511,6 @@ TestDescriptor TEST_FUNCTIONS[] = {
 	{ UninitializedTest, "Uninitialized" },
 
 	{ DataIntegrityTest, "Data Integrity" },
-
-	{ IntOverflowTest, "Integer Overflow Input" },
 
 	{ WrongKeyTest, "Wrong Key" },
 	{ ReplayAttackTest, "Replay Attack" },

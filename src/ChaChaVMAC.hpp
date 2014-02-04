@@ -43,9 +43,11 @@ typedef struct {
 
 bool chacha_key_expand(const char key[32], void *buffer, int bytes);
 
-void chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv, const void *from, void *to, int bytes);
+// Returns MAC
+u64 chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv, const void *from, void *to, int bytes);
 
-bool chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv, void *buffer, int bytes);
+// Accepts MAC as parameter
+bool chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv, void *buffer, int bytes, u64 mac);
 
 
 } // namespace cat

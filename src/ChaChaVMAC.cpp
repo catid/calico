@@ -47,7 +47,7 @@ bool cat::chacha_key_expand(const char key[32], void *buffer, int bytes) {
 	return true;
 }
 
-void cat::chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv_counter, const void *from, void *to, int bytes)
+u64 cat::chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv_counter, const void *from, void *to, int bytes)
 {
 	const u64 iv = getLE64(iv_counter);
 
@@ -59,10 +59,7 @@ void cat::chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv_co
 	chacha_blocks_impl(&S, 0, x, 64);
 
 	// Store the last two keystream words for encrypting the MAC later
-	u32 mac_keystream[2] = {
-		keys32[14],
-		keys32[15]
-	};
+	u64 mac_keystream = ((u64)getLE(keys32[14]) << 32) | getLE(keys32[15]);
 
 	// Encrypt the data:
 
@@ -105,21 +102,11 @@ void cat::chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv_co
 		}
 	}
 
-	// Attach MAC:
-	{
-		// Hash the encrypted buffer
-		u64 mac = vhash(&state->hash_state, to, bytes);
-
-		u8 *to8 = reinterpret_cast<u8 *>( to );
-		u32 *overhead = reinterpret_cast<u32 *>( to8 + bytes );
-
-		// Encrypt and attach the MAC to the end
-		overhead[0] = getLE((u32)mac) ^ mac_keystream[0];
-		overhead[1] = getLE((u32)(mac >> 32)) ^ mac_keystream[1];
-	}
+	// Return the MAC in endian-specific byte order
+	return vhash(&state->hash_state, to, bytes) ^ mac_keystream;
 }
 
-bool cat::chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv_counter, void *buffer, int bytes)
+bool cat::chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv_counter, void *buffer, int bytes, u64 mac)
 {
 	const u64 iv = getLE64(iv_counter);
 
@@ -131,24 +118,15 @@ bool cat::chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv_co
 	chacha_blocks_impl(&S, 0, x, 64);
 
 	// Store the last two keystream words for decrypting the MAC
-	u32 mac_keystream[2] = {
-		keys32[14],
-		keys32[15]
-	};
+	u64 mac_keystream = ((u64)getLE(keys32[14]) << 32) | getLE(keys32[15]);
 
 	// Recover and verify MAC:
 	{
 		// Hash the encrypted buffer
-		u64 mac = vhash(&state->hash_state, buffer, bytes);
+		u64 delta = mac_keystream ^ vhash(&state->hash_state, buffer, bytes) ^ mac;
+		u32 z = (u32)(delta >> 32) | (u32)delta;
 
-		u8 *text8 = reinterpret_cast<u8 *>( buffer );
-		const u32 *overhead = reinterpret_cast<const u32 *>( text8 + bytes );
-
-		// If generated MAC does not match the provided MAC,
-		u32 delta = getLE(overhead[0] ^ mac_keystream[0]) ^ (u32)mac;
-		delta |= getLE(overhead[1] ^ mac_keystream[1]) ^ (u32)(mac >> 32);
-
-		if (delta != 0) {
+		if (z != 0) {
 			return false;
 		}
 	}

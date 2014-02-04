@@ -37,19 +37,23 @@
 extern "C" {
 #endif
 
-#define CALICO_VERSION 4
+#define CALICO_VERSION 5
 
 /*
  * Verify binary compatibility with the Calico API on startup.
  *
  * Example:
- * 	if (calico_init()) throw "Update calico static library";
+ * 	if (calico_init()) {
+ * 		// The calico static library needs to be updated
+ * 		exit(1);
+ * 	}
  *
  * Returns 0 on success.
  * Returns non-zero if the API level does not match.
  */
 extern int _calico_init(int expected_version);
 #define calico_init() _calico_init(CALICO_VERSION)
+
 
 typedef struct {
 	char internal[480];
@@ -58,6 +62,7 @@ typedef struct {
 typedef struct {
 	char internal[620];
 } calico_state;
+
 
 enum CalicoRoles {
 	CALICO_INITIATOR = 1,
@@ -109,26 +114,19 @@ extern int calico_key_stream_only(calico_stream_only *S, int role, const void *k
  *
  * UDP-based protocols work with this type of encryption.
  *
- * Note that encrypting more messages at once is far more
- * efficient than encrypting them separately, so it may be
- * worth clustering multiple messages together before encryption.
- *
  * The plaintext buffer should contain the message to encrypt.
- * Set ciphertext_bytes to the size of the ciphertext buffer.
- * The result will be written to the ciphertext buffer, which
- * may overlap with the plaintext buffer.  After encryption,
- * the ciphertext_bytes will be set to the size of the
- * encrypted message, which should be CALICO_DATAGRAM_OVERHEAD
- * bytes larger.
+ * The ciphertext buffer will be set to the encrypted message,
+ * which is the same size as the plaintext buffer, and may also
+ * be done in-place.
  *
  * Preconditions:
- *	*ciphertext_bytes >= CALICO_DATAGRAM_OVERHEAD + plaintext_bytes
+ * 	overhead buffer contains CALICO_DATAGRAM_OVERHEAD bytes
  *
  * Returns 0 on success.
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_datagram_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes);
+extern int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plaintext, int bytes, void *overhead);
 
 /*
  * Decrypt ciphertext into plaintext from datagram transport
@@ -136,18 +134,15 @@ extern int calico_datagram_encrypt(calico_state *S, const void *plaintext, int p
  * UDP-based protocols work with this type of encryption.
  *
  * The ciphertext is decrypted in-place.
- * The provided ciphertext_bytes will be set to the size of the
- * plaintext after decryption, which should be equal to
- * ciphertext_bytes - CALICO_DATAGRAM_OVERHEAD.
  *
  * Preconditions:
- *	*ciphertext_bytes > CALICO_DATAGRAM_OVERHEAD
+ *	overhead buffer contains CALICO_DATAGRAM_OVERHEAD bytes
  *
  * Returns 0 on success.
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_datagram_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes);
+extern int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes, const void *overhead);
 
 /*
  * Encrypt plaintext into ciphertext for stream transport
@@ -156,26 +151,19 @@ extern int calico_datagram_decrypt(calico_state *S, void *ciphertext, int *ciphe
  *
  * TCP-based protocols work best with this type of encryption.
  *
- * Note that encrypting more messages at once is far more
- * efficient than encrypting them separately, so it may be
- * worth clustering multiple messages together before encryption.
- *
  * The plaintext buffer should contain the message to encrypt.
- * Set ciphertext_bytes to the size of the ciphertext buffer.
- * The result will be written to the ciphertext buffer, which
- * may overlap with the plaintext buffer.  After encryption,
- * the ciphertext_bytes will be set to the size of the
- * encrypted message, which should be CALICO_DATAGRAM_OVERHEAD
- * bytes larger.
+ * The ciphertext buffer will be set to the encrypted message,
+ * which is the same size as the plaintext buffer, and may also
+ * be done in-place.
  *
  * Preconditions:
- *	*ciphertext_bytes >= CALICO_DATAGRAM_OVERHEAD + plaintext_bytes
+ * 	overhead buffer contains CALICO_STREAM_OVERHEAD bytes
  *
  * Returns 0 on success.
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_stream_encrypt(void *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes);
+extern int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes, void *overhead);
 
 /*
  * Decrypt ciphertext into plaintext from stream transport
@@ -183,18 +171,15 @@ extern int calico_stream_encrypt(void *S, const void *plaintext, int plaintext_b
  * TCP-based protocols work best with this type of encryption.
  *
  * The ciphertext is decrypted in-place.
- * The provided ciphertext_bytes will be set to the size of the
- * plaintext after decryption, which should be equal to
- * ciphertext_bytes - CALICO_STREAM_OVERHEAD.
  *
  * Preconditions:
- *	*ciphertext_bytes > CALICO_STREAM_OVERHEAD
+ * 	overhead buffer contains CALICO_STREAM_OVERHEAD bytes
  *
  * Returns 0 on success.
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_stream_decrypt(void *S, void *ciphertext, int *ciphertext_bytes);
+extern int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *overhead);
 
 /*
  * Clean up a calico_state or calico_stream_only object
