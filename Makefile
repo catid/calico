@@ -6,8 +6,8 @@
 #OPTFLAGS = -O3 -fomit-frame-pointer -funroll-loops
 CCPP = clang++ -m64
 CC = clang -m64
-OPTFLAGS = -O3
-DBGFLAGS = -g -O0 -DDEBUG
+OPTFLAGS = -O3 -DCAT_CHACHA_IMPL
+DBGFLAGS = -g -O0 -DDEBUG -DCAT_CHACHA_IMPL
 CFLAGS = -Wall -fstrict-aliasing -I./libcat -I./include -I./chacha-opt \
 		 -Dchacha_blocks_impl=chacha_blocks_ssse3 -Dhchacha_impl=hchacha
 LIBNAME = bin/libcalico.a
@@ -20,11 +20,11 @@ shared_test_o = Clock.o
 
 extern_o = chacha.o chacha_blocks_ssse3-64.o
 
-libcat_o = BitMath.o EndianNeutral.o SecureErase.o SecureEqual.o
+libcat_o = BitMath.o EndianNeutral.o SecureErase.o
 
 calico_o = AntiReplayWindow.o Calico.o ChaChaVMAC.o VHash.o $(libcat_o) $(extern_o)
 
-calico_test_o = calico_test.o $(shared_test_o)
+calico_test_o = calico_test.o $(shared_test_o) SecureEqual.o
 calico_example_o = calico_example.o
 
 

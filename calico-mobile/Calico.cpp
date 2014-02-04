@@ -1,5 +1,5 @@
 /*
-	Copyright (c) 2012-2013 Christopher A. Taylor.  All rights reserved.
+	Copyright (c) 2012-2014 Christopher A. Taylor.  All rights reserved.
 
 	Redistribution and use in source and binary forms, with or without
 	modification, are permitted provided that the following conditions are met:
@@ -25,9 +25,6 @@
 	ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 	POSSIBILITY OF SUCH DAMAGE.
 */
-
-#include <iostream>
-using namespace std;
 
 #include "calico.h"
 
@@ -72,11 +69,9 @@ int _calico_init(int expected_version) {
 
 	// If internal state is larger than opaque object,
 	if (sizeof(calico_internal_state) > sizeof(calico_state)) {
-		cout << "TEST: " << sizeof(calico_internal_state) << endl;
 		return -1;
 	}
 	if (sizeof(calico_internal_state) - sizeof(antireplay_state) > sizeof(calico_stream_only)) {
-		cout << "TEST: " << (sizeof(calico_internal_state) - sizeof(antireplay_state)) << endl;
 		return -1;
 	}
 
@@ -195,81 +190,60 @@ int calico_key_stream_only(calico_stream_only *S, int role, const void *key, int
 	return 0;
 }
 
-int calico_datagram_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes_ptr) {
+int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plaintext, int bytes, void *overhead) {
 	calico_internal_state *state = (calico_internal_state *)S;
 
 	// If input is invalid or Calico is not keyed,
 	if (!m_initialized || !state || !plaintext || !ciphertext ||
-		plaintext_bytes < 0 || !ciphertext_bytes_ptr || state->flag != FLAG_KEYED_DATAGRAM) {
-		return -1;
-	}
-
-	// If plaintext bytes are too high,
-	if (plaintext_bytes > INT_MAX - CALICO_DATAGRAM_OVERHEAD) {
-		return -1;
-	}
-
-	// If ciphertext bytes are not large enough,
-	int ciphertext_bytes = *ciphertext_bytes_ptr;
-	if (plaintext_bytes + CALICO_DATAGRAM_OVERHEAD > ciphertext_bytes) {
+		bytes < 0 || !overhead || state->flag != FLAG_KEYED_DATAGRAM) {
 		return -1;
 	}
 
 	// Select next IV
 	const u64 iv = state->window.datagram_local++;
 
-	chacha_encrypt(&state->local, state->local.datagram_key, iv, plaintext, ciphertext, plaintext_bytes);
-
-	// Attach IV to the end:
-
-	u8 *overhead8 = reinterpret_cast<u8*>( ciphertext ) + plaintext_bytes;
-	const u32 *overhead32 = reinterpret_cast<const u32*>( overhead8 );
+	// Encrypt and generate MAC
+	u64 mac = chacha_encrypt(&state->local, state->local.datagram_key, iv, plaintext, ciphertext, bytes);
 
 	// Obfuscate the truncated IV
 	u32 trunc_iv = (u32)iv;
-	trunc_iv -= getLE(*overhead32);
+	trunc_iv -= (u32)mac;
 	trunc_iv ^= IV_FUZZ;
 
-	// Append it to the data
-	overhead8[8] = (u8)trunc_iv;
-	overhead8[9] = (u8)(trunc_iv >> 16);
-	overhead8[10] = (u8)(trunc_iv >> 8);
+	u8 *overhead_iv = reinterpret_cast<u8 *>( overhead );
+	u64 *overhead_mac = reinterpret_cast<u64 *>( overhead_iv + 3 );
 
-	// Set ciphertext bytes
-	*ciphertext_bytes_ptr = plaintext_bytes + CALICO_DATAGRAM_OVERHEAD;
+	// Store IV and MAC
+	overhead_iv[0] = (u8)trunc_iv;
+	overhead_iv[1] = (u8)(trunc_iv >> 16);
+	overhead_iv[2] = (u8)(trunc_iv >> 8);
+
+	*overhead_mac = getLE(mac);
 
 	return 0;
 }
 
-int calico_datagram_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes) {
+int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes, const void *overhead) {
 	calico_internal_state *state = (calico_internal_state *)S;
 
 	// If input is invalid or Calico object is not keyed,
-	if (!m_initialized || !state || !ciphertext || !ciphertext_bytes ||
-		*ciphertext_bytes < 0 || state->flag != FLAG_KEYED_DATAGRAM) {
+	if (!m_initialized || !state || !ciphertext || !overhead ||
+		bytes < 0 || state->flag != FLAG_KEYED_DATAGRAM) {
 		return -1;
 	}
 
-	// If too small,
-	if (*ciphertext_bytes < INT_MIN + CALICO_DATAGRAM_OVERHEAD) {
-		return -1;
-	}
+	const u8 *overhead_iv = reinterpret_cast<const u8 *>( overhead );
+	const u64 *overhead_mac = reinterpret_cast<const u64 *>( overhead_iv + 3 );
 
-	// It too large,
-	int plaintext_bytes = *ciphertext_bytes - CALICO_DATAGRAM_OVERHEAD;
-	if (plaintext_bytes < 0) {
-		return -1;
-	}
-
-	u8 *overhead8 = reinterpret_cast<u8*>( ciphertext ) + plaintext_bytes;
-	u32 *overhead32 = reinterpret_cast<u32*>( overhead8 );
+	// Grab the MAC
+	const u64 mac = getLE(*overhead_mac);
 
 	// Grab the obfuscated IV
-	u32 trunc_iv = ((u32)overhead8[10] << 8) | ((u32)overhead8[9] << 16) | (u32)overhead8[8];
+	u32 trunc_iv = ((u32)overhead_iv[2] << 8) | ((u32)overhead_iv[1] << 16) | (u32)overhead_iv[0];
 
 	// De-obfuscate the truncated IV
 	trunc_iv ^= IV_FUZZ;
-	trunc_iv += getLE(*overhead32);
+	trunc_iv += (u32)mac;
 	trunc_iv &= IV_MASK;
 
 	// Reconstruct the full IV counter
@@ -281,82 +255,61 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int *ciphertext_b
 	}
 
 	// Decrypt and check MAC
-	if (!chacha_decrypt(&state->remote, state->remote.datagram_key, iv, ciphertext, plaintext_bytes)) {
+	if (!chacha_decrypt(&state->remote, state->remote.datagram_key, iv, ciphertext, bytes, mac)) {
 		return -1;
 	}
 
 	// Accept this IV
 	antireplay_accept(&state->window, iv);
 
-	*ciphertext_bytes = plaintext_bytes;
-
 	return 0;
 }
 
-int calico_stream_encrypt(void *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes_ptr) {
+int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes, void *overhead) {
 	calico_internal_state *state = (calico_internal_state *)S;
 
 	// If input is invalid or Calico is not keyed,
-	if (!m_initialized || !state || !plaintext || !ciphertext ||
-		plaintext_bytes < 0 || !ciphertext_bytes_ptr ||
+	if (!m_initialized || !state || !plaintext || !ciphertext || bytes < 0 || !overhead ||
 		(state->flag != FLAG_KEYED_STREAM && state->flag != FLAG_KEYED_DATAGRAM)) {
-		return -1;
-	}
-
-	// If plaintext bytes are too high,
-	if (plaintext_bytes > INT_MAX - CALICO_STREAM_OVERHEAD) {
-		return -1;
-	}
-
-	// If ciphertext bytes are not large enough,
-	int ciphertext_bytes = *ciphertext_bytes_ptr;
-	if (plaintext_bytes + CALICO_STREAM_OVERHEAD > ciphertext_bytes) {
 		return -1;
 	}
 
 	// Select next IV
 	const u64 iv = state->stream_local++;
 
-	chacha_encrypt(&state->local, state->local.stream_key, iv, plaintext, ciphertext, plaintext_bytes);
+	// Encrypt and generate MAC
+	u64 mac = chacha_encrypt(&state->local, state->local.stream_key, iv, plaintext, ciphertext, bytes);
 
-	// Set ciphertext bytes
-	*ciphertext_bytes_ptr = plaintext_bytes + CALICO_STREAM_OVERHEAD;
+	// Write MAC
+	u64 *overhead_mac = reinterpret_cast<u64 *>( overhead );
+	*overhead_mac = getLE(mac);
 
 	return 0;
 }
 
-int calico_stream_decrypt(void *S, void *ciphertext, int *ciphertext_bytes) {
+int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *overhead) {
 	calico_internal_state *state = (calico_internal_state *)S;
 
 	// If input is invalid or Calico object is not keyed,
-	if (!m_initialized || !state || !ciphertext || !ciphertext_bytes ||
-		*ciphertext_bytes < 0 ||
+	if (!m_initialized || !state || !ciphertext || !overhead || bytes < 0 ||
 		(state->flag != FLAG_KEYED_STREAM && state->flag != FLAG_KEYED_DATAGRAM)) {
 		return -1;
 	}
 
-	// If too small,
-	if (*ciphertext_bytes < INT_MIN + CALICO_STREAM_OVERHEAD) {
-		return -1;
-	}
-
-	// It too large,
-	int plaintext_bytes = *ciphertext_bytes - CALICO_STREAM_OVERHEAD;
-	if (plaintext_bytes < 0) {
-		return -1;
-	}
-
+	// Get next expected IV
 	u64 iv = state->stream_remote;
 
+	// Read MAC
+	const u64 *overhead_mac = reinterpret_cast<const u64 *>( overhead );
+	u64 mac = getLE(*overhead_mac);
+
 	// Decrypt and check MAC
-	if (!chacha_decrypt(&state->remote, state->remote.stream_key, iv, ciphertext, plaintext_bytes)) {
+	if (!chacha_decrypt(&state->remote, state->remote.stream_key, iv, ciphertext, bytes, mac)) {
 		return -1;
 	}
 
 	// Advance IV on success
 	state->stream_remote = iv + 1;
-
-	*ciphertext_bytes = plaintext_bytes;
 
 	return 0;
 }

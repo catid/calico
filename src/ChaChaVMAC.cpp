@@ -32,6 +32,10 @@ using namespace cat;
 
 #include "chacha.h"
 
+#ifndef CAT_CHACHA_IMPL
+#define chacha_blocks_impl chacha_blocks_ref
+#endif
+
 // Using the internal chacha_blocks() function to speed up invalid message rejection
 extern "C" void chacha_blocks_impl(chacha_state_t *state, const uint8_t *in, uint8_t *out, size_t bytes);
 
