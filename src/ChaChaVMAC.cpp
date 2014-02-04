@@ -1,5 +1,5 @@
 /*
-	Copyright (c) 2012-2013 Christopher A. Taylor.  All rights reserved.
+	Copyright (c) 2012-2014 Christopher A. Taylor.  All rights reserved.
 
 	Redistribution and use in source and binary forms, with or without
 	modification, are permitted provided that the following conditions are met:
@@ -35,7 +35,8 @@ using namespace cat;
 // Using the internal chacha_blocks() function to speed up invalid message rejection
 extern "C" void chacha_blocks_impl(chacha_state_t *state, const uint8_t *in, uint8_t *out, size_t bytes);
 
-bool cat::chacha_key_expand(const char key[32], void *buffer, int bytes) {
+bool cat::chacha_key_expand(const char key[32], void *buffer, int bytes)
+{
 	if (bytes % 64) {
 		return false;
 	}
@@ -47,7 +48,8 @@ bool cat::chacha_key_expand(const char key[32], void *buffer, int bytes) {
 	return true;
 }
 
-u64 cat::chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv_counter, const void *from, void *to, int bytes)
+u64 cat::chacha_encrypt(chacha_vmac_state *state, const char key[32],
+		u64 iv_counter, const void *from, void *to, int bytes)
 {
 	const u64 iv = getLE64(iv_counter);
 
@@ -59,7 +61,8 @@ u64 cat::chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv_cou
 	chacha_blocks_impl(&S, 0, x, 64);
 
 	// Store the last two keystream words for encrypting the MAC later
-	u64 mac_keystream = ((u64)getLE(keys32[14]) << 32) | getLE(keys32[15]);
+	const u64 *mac_key_ptr = reinterpret_cast<const u64 *>( keys32 + 14 );
+	u64 mac_keystream = getLE(*mac_key_ptr);
 
 	// Encrypt the data:
 
@@ -118,7 +121,8 @@ bool cat::chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv_co
 	chacha_blocks_impl(&S, 0, x, 64);
 
 	// Store the last two keystream words for decrypting the MAC
-	u64 mac_keystream = ((u64)getLE(keys32[14]) << 32) | getLE(keys32[15]);
+	const u64 *mac_key_ptr = reinterpret_cast<const u64 *>( keys32 + 14 );
+	u64 mac_keystream = getLE(*mac_key_ptr);
 
 	// Recover and verify MAC:
 	{

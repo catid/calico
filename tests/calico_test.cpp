@@ -18,8 +18,7 @@ typedef void (*TestFunction)();
  *
  * Note that valgrind will complain about these but it is okay.
  */
-void UninitializedTest()
-{
+void UninitializedTest() {
 	calico_state S;
 
 	char overhead[CALICO_DATAGRAM_OVERHEAD];
@@ -36,8 +35,7 @@ void UninitializedTest()
 /*
  * Check that data may be sent over the tunnel without getting corrupted
  */
-void DataIntegrityTest()
-{
+void DataIntegrityTest() {
 	// Client and server states and room for encrypted data
 	calico_state c, s;
 	char orig_data[10000], enc_data[10000 + 1];
@@ -66,7 +64,7 @@ void DataIntegrityTest()
 			enc_data[len] = 'A';
 
 			assert(!calico_datagram_encrypt(&c, enc_data, orig_data, len, overhead));
-			assert(!calico_datagram_decrypt(&c, enc_data, len, overhead));
+			assert(!calico_datagram_decrypt(&s, enc_data, len, overhead));
 
 			assert(!memcmp(enc_data, orig_data, len));
 
@@ -78,8 +76,7 @@ void DataIntegrityTest()
 /*
  * Test where each side is using a different key
  */
-void WrongKeyTest()
-{
+void WrongKeyTest() {
 	char xkey[32] = {0};
 	char ykey[32] = {1};
 
@@ -92,59 +89,50 @@ void WrongKeyTest()
 
 	// Verify that it cannot be decrypted when the wrong key is used
 	assert(!calico_key(&y, CALICO_RESPONDER, ykey, sizeof(ykey)));
-	assert(calico_datagram_decrypt(&y, data, &bytes));
+	assert(calico_datagram_decrypt(&y, data, 32, overhead));
 
 	// Verify that it can be decrypted when the right key is used
 	assert(!calico_key(&y, CALICO_RESPONDER, xkey, sizeof(xkey)));
-	assert(!calico_datagram_decrypt(&y, data, &bytes));
+	assert(!calico_datagram_decrypt(&y, data, 32, overhead));
 }
 
 /*
  * Test replay attack defense
  */
-void ReplayAttackTest()
-{
+void ReplayAttackTest() {
 	char key[32] = {0};
 
 	calico_state x, y;
 	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
 	assert(!calico_key(&y, CALICO_RESPONDER, key, sizeof(key)));
 
-	char data[32 + CALICO_DATAGRAM_OVERHEAD] = {0};
+	char data[32] = {0};
+	char overhead[CALICO_DATAGRAM_OVERHEAD];
 
-	int bytes = (int)sizeof(data);
-	assert(!calico_datagram_encrypt(&x, data, 32, data, &bytes));
-	assert(bytes == sizeof(data));
+	assert(!calico_datagram_encrypt(&x, data, data, 32, overhead));
 
-	assert(!calico_datagram_decrypt(&y, data, &bytes));
-	assert(bytes == 32);
+	assert(!calico_datagram_decrypt(&y, data, 32, overhead));
 
 	// Re-use IV 0
 
 	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
 
-	bytes = (int)sizeof(data);
-	assert(!calico_datagram_encrypt(&x, data, 32, data, &bytes));
-	assert(bytes == sizeof(data));
+	assert(!calico_datagram_encrypt(&x, data, data, 32, overhead));
 
 	// Decryption should fail here since IV was reused
-	assert(calico_datagram_decrypt(&y, data, &bytes));
+	assert(calico_datagram_decrypt(&y, data, 32, overhead));
 
 	// Continue with IV 1
 
-	bytes = (int)sizeof(data);
-	assert(!calico_datagram_encrypt(&x, data, 32, data, &bytes));
-	assert(bytes == sizeof(data));
+	assert(!calico_datagram_encrypt(&x, data, data, 32, overhead));
 
-	assert(!calico_datagram_decrypt(&y, data, &bytes));
-	assert(bytes == 32);
+	assert(!calico_datagram_decrypt(&y, data, 32, overhead));
 }
 
 /*
  * Verify that packets can be received out of order up to a certain distance
  */
-void ReplayWindowTest()
-{
+void ReplayWindowTest() {
 	char key[32] = {0};
 
 	calico_state x, y;
@@ -152,78 +140,59 @@ void ReplayWindowTest()
 	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
 	assert(!calico_key(&y, CALICO_RESPONDER, key, sizeof(key)));
 
-	char data[32 + CALICO_DATAGRAM_OVERHEAD] = {0};
-	int bytes;
+	char data[32] = {0};
+	char overhead[CALICO_DATAGRAM_OVERHEAD];
 
 	// Advance IV for x by 2048 (simulate dropping lots of packets)
-	for (int ii = 0; ii < 2048; ++ii)
-	{
-		bytes = (int)sizeof(data);
-		assert(!calico_datagram_encrypt(&x, data, 32, data, &bytes));
-		assert(bytes == sizeof(data));
+	for (int ii = 0; ii < 2048; ++ii) {
+		assert(!calico_datagram_encrypt(&x, data, data, 32, overhead));
 	}
 
 	// Deliver the last one
-	assert(!calico_datagram_decrypt(&y, data, &bytes));
-	assert(bytes == 32);
+	assert(!calico_datagram_decrypt(&y, data, 32, overhead));
 
 	// Now replay them all
 
 	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
 
-	for (int ii = 0; ii < 1024; ++ii)
-	{
-		bytes = (int)sizeof(data);
-		assert(!calico_datagram_encrypt(&x, data, 32, data, &bytes));
-		assert(bytes == sizeof(data));
+	for (int ii = 0; ii < 1024; ++ii) {
+		assert(!calico_datagram_encrypt(&x, data, data, 32, overhead));
 
 		// Verify IV drop
-		assert(calico_datagram_decrypt(&y, data, &bytes));
+		assert(calico_datagram_decrypt(&y, data, 32, overhead));
 	}
 
-	for (int ii = 1024; ii < 2047; ++ii)
-	{
-		bytes = (int)sizeof(data);
-		assert(!calico_datagram_encrypt(&x, data, 32, data, &bytes));
-		assert(bytes == sizeof(data));
+	for (int ii = 1024; ii < 2047; ++ii) {
+		assert(!calico_datagram_encrypt(&x, data, data, 32, overhead));
 
-		assert(!calico_datagram_decrypt(&y, data, &bytes));
-		assert(bytes == 32);
+		assert(!calico_datagram_decrypt(&y, data, 32, overhead));
 	}
 
 	// Test replay of original packet
 
-	bytes = (int)sizeof(data);
-	assert(!calico_datagram_encrypt(&x, data, 32, data, &bytes));
-	assert(bytes == sizeof(data));
+	assert(!calico_datagram_encrypt(&x, data, data, 32, overhead));
 
 	// Verify that replay is dropped
-	assert(calico_datagram_decrypt(&y, data, &bytes));
+	assert(calico_datagram_decrypt(&y, data, 32, overhead));
 
 	// Test some forward movement
 
-	for (int ii = 0; ii < 1024; ++ii)
-	{
-		int bytes = (int)sizeof(data);
-		assert(!calico_datagram_encrypt(&x, data, 32, data, &bytes));
-		assert(bytes == sizeof(data));
+	for (int ii = 0; ii < 1024; ++ii) {
+		assert(!calico_datagram_encrypt(&x, data, data, 32, overhead));
 
-		assert(!calico_datagram_decrypt(&y, data, &bytes));
-		assert(bytes == 32);
+		assert(!calico_datagram_decrypt(&y, data, 32, overhead));
 	}
 }
 
 /*
  * Test performance of Initialize() function
  */
-void BenchmarkInitialize()
-{
+void BenchmarkInitialize() {
 	char key[32] = {0};
 
 	double t0 = m_clock.usec();
 
-	for (int ii = 0; ii < 100000; ++ii)
-	{
+	for (int ii = 0; ii < 100000; ++ii) {
 		key[ii % 32] += 37;
 
 		calico_state x;
@@ -243,25 +212,21 @@ void BenchmarkInitialize()
 /*
  * Test performance of Encrypt() function
  */
-void BenchmarkEncrypt()
-{
+void BenchmarkEncrypt() {
 	char key[32] = {0};
 	calico_state x;
 
 	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
 
-	char orig[10000 + CALICO_DATAGRAM_OVERHEAD] = {0};
-	char data[10000 + CALICO_DATAGRAM_OVERHEAD] = {0};
+	char orig[10000] = {0};
+	char data[10000] = {0};
+	char overhead[CALICO_DATAGRAM_OVERHEAD];
 
-	for (int bytes = 10000; bytes > 0; bytes /= 10)
-	{
+	for (int bytes = 10000; bytes > 0; bytes /= 10) {
 		double t0 = m_clock.usec();
 
-		for (int ii = 0; ii < 100000; ++ii)
-		{
-			int databytes = (int)sizeof(data);
-			assert(!calico_datagram_encrypt(&x, orig, bytes, data, &databytes));
-			assert(databytes == bytes + CALICO_DATAGRAM_OVERHEAD);
+		for (int ii = 0; ii < 100000; ++ii) {
+			assert(!calico_datagram_encrypt(&x, data, orig, bytes, overhead));
 		}
 
 		double t1 = m_clock.usec();
@@ -272,36 +237,32 @@ void BenchmarkEncrypt()
 
 		double mbps = bytes * fps / 1000000.0;
 
-		cout << "Benchmark: Encrypt() " << bytes << " bytes in " << adt << " usec on average / " << mbps << " MBPS / " << fps << " per second" << endl;
+		cout << "calico_datagram_encrypt: " << bytes << " bytes in " << adt << " usec on average / " << mbps << " MBPS / " << fps << " per second" << endl;
 	}
 }
 
 /*
  * Test performance of Decrypt() function when it fails
  */
-void BenchmarkDecryptFail()
-{
+void BenchmarkDecryptFail() {
 	char key[32] = {0};
 	calico_state x, y;
 
 	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
 	assert(!calico_key(&y, CALICO_RESPONDER, key, sizeof(key)));
 
-	char data[10000 + CALICO_DATAGRAM_OVERHEAD] = {0};
+	char data[10000] = {0};
+	char overhead[CALICO_DATAGRAM_OVERHEAD];
 
-	for (int bytes = 10000; bytes > 0; bytes /= 10)
-	{
-		int databytes = (int)sizeof(data);
-		assert(!calico_datagram_encrypt(&x, data, bytes, data, &databytes));
-		assert(databytes == bytes + CALICO_DATAGRAM_OVERHEAD);
+	for (int bytes = 10000; bytes > 0; bytes /= 10) {
+		assert(!calico_datagram_encrypt(&x, data, data, bytes, overhead));
 
 		data[0] ^= 1;
 
 		double t0 = m_clock.usec();
 
-		for (int ii = 0; ii < 100000; ++ii)
-		{
-			assert(calico_datagram_decrypt(&y, data, &databytes));
+		for (int ii = 0; ii < 100000; ++ii) {
+			assert(calico_datagram_decrypt(&y, data, bytes, overhead));
 		}
 
 		double t1 = m_clock.usec();
@@ -312,48 +273,43 @@ void BenchmarkDecryptFail()
 
 		double mbps = bytes * fps / 1000000.0;
 
-		cout << "Benchmark: Decrypt() drops " << bytes << " corrupted bytes in " << adt << " usec on average / " << mbps << " MBPS / " << fps << " per second" << endl;
+		cout << "calico_datagram_decrypt: drops " << bytes << " corrupted bytes in " << adt << " usec on average / " << mbps << " MBPS / " << fps << " per second" << endl;
 	}
 }
 
 /*
  * Test performance of Decrypt() function when it succeeds
  */
-void BenchmarkDecryptSuccess()
-{
+void BenchmarkDecryptSuccess() {
 	char key[32] = {0};
 	calico_state x, y;
 
 	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
 	assert(!calico_key(&y, CALICO_RESPONDER, key, sizeof(key)));
 
-	char data[10000 + CALICO_DATAGRAM_OVERHEAD];
+	char data[10000];
 	char temp[sizeof(data)];
+	char overhead[CALICO_DATAGRAM_OVERHEAD];
 
 	Abyssinian prng;
 	prng.Initialize(m_clock.msec(), Clock::cycles());
 
-	for (int bytes = 10000; bytes > 0; bytes /= 10)
-	{
+	for (int bytes = 10000; bytes > 0; bytes /= 10) {
 		double t_sum = 0;
 
 		u32 *data_ptr = reinterpret_cast<u32*>( temp );
-		for (int jj = 0; jj < (bytes + 3) / 4; ++jj)
+		for (int jj = 0; jj < (bytes + 3) / 4; ++jj) {
 			data_ptr[jj] = prng.Next();
+		}
 
-		for (int ii = 0; ii < 100000; ++ii)
-		{
-			int databytes = (int)sizeof(data);
-			assert(!calico_datagram_encrypt(&x, temp, bytes, data, &databytes));
-			assert(databytes == bytes + CALICO_DATAGRAM_OVERHEAD);
+		for (int ii = 0; ii < 100000; ++ii) {
+			assert(!calico_datagram_encrypt(&x, data, temp, bytes, overhead));
 
 			double t0 = m_clock.usec();
 
-			assert(!calico_datagram_decrypt(&y, data, &databytes));
+			assert(!calico_datagram_decrypt(&y, data, bytes, overhead));
 
 			double t1 = m_clock.usec();
-
-			assert(databytes == bytes);
 
 			assert(!memcmp(data, temp, bytes));
 
@@ -366,7 +322,7 @@ void BenchmarkDecryptSuccess()
 
 		double mbps = bytes * fps / 1000000.0;
 
-		cout << "Benchmark: Decrypt() " << bytes << " bytes in " << adt << " usec on average / " << mbps << " MBPS / " << fps << " per second" << endl;
+		cout << "calico_datagram_decrypt: " << bytes << " bytes in " << adt << " usec on average / " << mbps << " MBPS / " << fps << " per second" << endl;
 	}
 }
 
@@ -374,18 +330,19 @@ void BenchmarkDecryptSuccess()
  * Use stream API
  */
 void StreamModeTest() {
-	char data[10000 + CALICO_STREAM_OVERHEAD];
-	char orig[10000 + CALICO_STREAM_OVERHEAD];
+	char data[10000];
+	char orig[10000];
+	char overhead[CALICO_STREAM_OVERHEAD];
 
 	Abyssinian prng;
 	prng.Initialize(m_clock.msec(), Clock::cycles());
 
-	for (int ii = 0; ii < 10; ++ii)
-	{
+	for (int ii = 0; ii < 10; ++ii) {
 		u32 key[8];
 
-		for (int jj = 0; jj < 8; ++jj)
+		for (int jj = 0; jj < 8; ++jj) {
 			key[jj] = prng.Next();
+		}
 
 		calico_stream_only x, y;
 
@@ -394,39 +351,34 @@ void StreamModeTest() {
 
 		u32 *data_ptr = reinterpret_cast<u32*>( orig );
 
-		for (int messages = 0; messages < 100; ++messages)
-		{
+		for (int messages = 0; messages < 100; ++messages) {
 			// Send x -> y
 
 			int len = prng.Next() % 10000;
 
-			for (int jj = 0; jj < (len + 3) / 4; ++jj)
+			for (int jj = 0; jj < (len + 3) / 4; ++jj) {
 				data_ptr[jj] = prng.Next();
+			}
 
-			int databytes = (int)sizeof(data);
-			assert(!calico_stream_encrypt(&x, orig, len, data, &databytes));
-			assert(calico_datagram_encrypt((calico_state*)&x, orig, len, data, &databytes));
-			assert(databytes == len + CALICO_STREAM_OVERHEAD);
+			assert(!calico_stream_encrypt(&x, data, orig, len, overhead));
+			assert(calico_datagram_encrypt((calico_state*)&x, data, orig, len, overhead));
 
-			assert(!calico_stream_decrypt(&y, data, &databytes));
-			assert(databytes == len);
-			assert(!memcmp(data, orig, databytes));
+			assert(!calico_stream_decrypt(&y, data, len, overhead));
+			assert(!memcmp(data, orig, len));
 
 			// Send y -> x
 
 			len = prng.Next() % 10000;
 
-			for (int jj = 0; jj < (len + 3) / 4; ++jj)
+			for (int jj = 0; jj < (len + 3) / 4; ++jj) {
 				data_ptr[jj] = prng.Next();
+			}
 
-			databytes = (int)sizeof(data);
-			assert(!calico_stream_encrypt(&y, orig, len, data, &databytes));
-			assert(calico_datagram_encrypt((calico_state*)&y, orig, len, data, &databytes));
-			assert(databytes == len + CALICO_STREAM_OVERHEAD);
+			assert(!calico_stream_encrypt(&y, data, orig, len, overhead));
+			assert(calico_datagram_encrypt((calico_state*)&y, data, orig, len, overhead));
 
-			assert(!calico_stream_decrypt(&x, data, &databytes));
-			assert(databytes == len);
-			assert(!memcmp(data, orig, databytes));
+			assert(!calico_stream_decrypt(&x, data, len, overhead));
+			assert(!memcmp(data, orig, len));
 		}
 	}
 }
@@ -434,20 +386,20 @@ void StreamModeTest() {
 /*
  * Run a lot of random input
  */
-void StressTest()
-{
-	char data[10000 + CALICO_DATAGRAM_OVERHEAD];
-	char orig[10000 + CALICO_DATAGRAM_OVERHEAD];
+void StressTest() {
+	char data[10000];
+	char orig[10000];
+	char overhead[CALICO_DATAGRAM_OVERHEAD];
 
 	Abyssinian prng;
 	prng.Initialize(m_clock.msec(), Clock::cycles());
 
-	for (int ii = 0; ii < 1000; ++ii)
-	{
+	for (int ii = 0; ii < 1000; ++ii) {
 		u32 key[8];
 
-		for (int jj = 0; jj < 8; ++jj)
+		for (int jj = 0; jj < 8; ++jj) {
 			key[jj] = prng.Next();
+		}
 
 		calico_state x, y;
 
@@ -456,44 +408,37 @@ void StressTest()
 
 		u32 *data_ptr = reinterpret_cast<u32*>( orig );
 
-		for (int messages = 0; messages < 1000; ++messages)
-		{
+		for (int messages = 0; messages < 1000; ++messages) {
 			// Send x -> y
 
 			int len = prng.Next() % 10000;
 
-			for (int jj = 0; jj < (len + 3) / 4; ++jj)
+			for (int jj = 0; jj < (len + 3) / 4; ++jj) {
 				data_ptr[jj] = prng.Next();
+			}
 
-			int databytes = len;
-			assert(!calico_datagram_encrypt(&x, orig, len, data, &databytes));
-			assert(databytes == len + CALICO_DATAGRAM_OVERHEAD);
+			assert(!calico_datagram_encrypt(&x, data, orig, len, overhead));
 
 			// Add 5% packetloss
-			if (prng.Next() % 100 >= 5)
-			{
-				assert(!calico_datagram_decrypt(&y, data, &databytes));
-				assert(databytes == len);
-				assert(!memcmp(data, orig, databytes));
+			if (prng.Next() % 100 >= 5) {
+				assert(!calico_datagram_decrypt(&y, data, len, overhead));
+				assert(!memcmp(data, orig, len));
 			}
 
 			// Send y -> x
 
 			len = prng.Next() % 10000;
 
-			for (int jj = 0; jj < (len + 3) / 4; ++jj)
+			for (int jj = 0; jj < (len + 3) / 4; ++jj) {
 				data_ptr[jj] = prng.Next();
+			}
 
-			databytes = len;
-			assert(!calico_datagram_encrypt(&y, orig, len, data, &databytes));
-			assert(databytes == len + CALICO_DATAGRAM_OVERHEAD);
+			assert(!calico_datagram_encrypt(&y, data, orig, len, overhead));
 
 			// Add 5% packetloss
-			if (prng.Next() % 100 >= 5)
-			{
-				assert(!calico_datagram_decrypt(&x, data, &databytes));
-				assert(databytes == len);
-				assert(!memcmp(data, orig, databytes));
+			if (prng.Next() % 100 >= 5) {
+				assert(!calico_datagram_decrypt(&x, data, len, overhead));
+				assert(!memcmp(data, orig, len));
 			}
 		}
 	}

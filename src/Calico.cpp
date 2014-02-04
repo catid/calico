@@ -1,5 +1,5 @@
 /*
-	Copyright (c) 2012-2013 Christopher A. Taylor.  All rights reserved.
+	Copyright (c) 2012-2014 Christopher A. Taylor.  All rights reserved.
 
 	Redistribution and use in source and binary forms, with or without
 	modification, are permitted provided that the following conditions are met:
@@ -25,9 +25,6 @@
 	ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 	POSSIBILITY OF SUCH DAMAGE.
 */
-
-#include <iostream>
-using namespace std;
 
 #include "calico.h"
 
@@ -72,11 +69,9 @@ int _calico_init(int expected_version) {
 
 	// If internal state is larger than opaque object,
 	if (sizeof(calico_internal_state) > sizeof(calico_state)) {
-		cout << "TEST: " << sizeof(calico_internal_state) << endl;
 		return -1;
 	}
 	if (sizeof(calico_internal_state) - sizeof(antireplay_state) > sizeof(calico_stream_only)) {
-		cout << "TEST: " << (sizeof(calico_internal_state) - sizeof(antireplay_state)) << endl;
 		return -1;
 	}
 
@@ -208,7 +203,7 @@ int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plain
 	const u64 iv = state->window.datagram_local++;
 
 	// Encrypt and generate MAC
-	u64 mac = chacha_encrypt(&state->local, state->local.datagram_key, iv, plaintext, ciphertext, bytes, overhead);
+	u64 mac = chacha_encrypt(&state->local, state->local.datagram_key, iv, plaintext, ciphertext, bytes);
 
 	// Obfuscate the truncated IV
 	u32 trunc_iv = (u32)iv;
@@ -222,6 +217,7 @@ int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plain
 	overhead_iv[0] = (u8)trunc_iv;
 	overhead_iv[1] = (u8)(trunc_iv >> 16);
 	overhead_iv[2] = (u8)(trunc_iv >> 8);
+
 	*overhead_mac = getLE(mac);
 
 	return 0;
@@ -240,7 +236,7 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes, const 
 	const u64 *overhead_mac = reinterpret_cast<const u64 *>( overhead_iv + 3 );
 
 	// Grab the MAC
-	u64 mac = getLE(*overhead_mac);
+	const u64 mac = getLE(*overhead_mac);
 
 	// Grab the obfuscated IV
 	u32 trunc_iv = ((u32)overhead_iv[2] << 8) | ((u32)overhead_iv[1] << 16) | (u32)overhead_iv[0];
@@ -259,14 +255,12 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes, const 
 	}
 
 	// Decrypt and check MAC
-	if (!chacha_decrypt(&state->remote, state->remote.datagram_key, iv, ciphertext, plaintext_bytes, mac)) {
+	if (!chacha_decrypt(&state->remote, state->remote.datagram_key, iv, ciphertext, bytes, mac)) {
 		return -1;
 	}
 
 	// Accept this IV
 	antireplay_accept(&state->window, iv);
-
-	*ciphertext_bytes = plaintext_bytes;
 
 	return 0;
 }
@@ -284,7 +278,7 @@ int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext, int 
 	const u64 iv = state->stream_local++;
 
 	// Encrypt and generate MAC
-	u64 mac = chacha_encrypt(&state->local, state->local.stream_key, iv, plaintext, ciphertext, plaintext_bytes);
+	u64 mac = chacha_encrypt(&state->local, state->local.stream_key, iv, plaintext, ciphertext, bytes);
 
 	// Write MAC
 	u64 *overhead_mac = reinterpret_cast<u64 *>( overhead );
@@ -310,7 +304,7 @@ int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *over
 	u64 mac = getLE(*overhead_mac);
 
 	// Decrypt and check MAC
-	if (!chacha_decrypt(&state->remote, state->remote.stream_key, iv, ciphertext, plaintext_bytes, mac)) {
+	if (!chacha_decrypt(&state->remote, state->remote.stream_key, iv, ciphertext, bytes, mac)) {
 		return -1;
 	}
 
