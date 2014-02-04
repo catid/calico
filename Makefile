@@ -20,7 +20,7 @@ shared_test_o = Clock.o
 
 extern_o = chacha.o chacha_blocks_ssse3-64.o
 
-libcat_o = BitMath.o EndianNeutral.o SecureErase.o
+libcat_o = BitMath.o EndianNeutral.o SecureErase.o SecureEqual.o
 
 calico_o = AntiReplayWindow.o Calico.o ChaChaVMAC.o VHash.o $(libcat_o) $(extern_o)
 
@@ -75,6 +75,9 @@ EndianNeutral.o : libcat/EndianNeutral.cpp
 
 SecureErase.o : libcat/SecureErase.cpp
 	$(CCPP) $(CFLAGS) -c libcat/SecureErase.cpp
+
+SecureEqual.o : libcat/SecureEqual.cpp
+	$(CCPP) $(CFLAGS) -c libcat/SecureEqual.cpp
 
 BitMath.o : libcat/BitMath.cpp
 	$(CCPP) $(CFLAGS) -c libcat/BitMath.cpp

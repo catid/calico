@@ -7,6 +7,7 @@ using namespace std;
 #include "calico.h"
 #include "Clock.hpp"
 #include "AbyssinianPRNG.hpp"
+#include "SecureEqual.hpp"
 using namespace cat;
 
 static Clock m_clock;
@@ -66,7 +67,7 @@ void DataIntegrityTest() {
 			assert(!calico_datagram_encrypt(&c, enc_data, orig_data, len, overhead));
 			assert(!calico_datagram_decrypt(&s, enc_data, len, overhead));
 
-			assert(!memcmp(enc_data, orig_data, len));
+			assert(SecureEqual(enc_data, orig_data, len));
 
 			assert(enc_data[len] == 'A');
 		}
@@ -311,7 +312,7 @@ void BenchmarkDecryptSuccess() {
 
 			double t1 = m_clock.usec();
 
-			assert(!memcmp(data, temp, bytes));
+			assert(SecureEqual(data, temp, bytes));
 
 			t_sum += t1 - t0;
 		}
@@ -364,7 +365,7 @@ void StreamModeTest() {
 			assert(calico_datagram_encrypt((calico_state*)&x, data, orig, len, overhead));
 
 			assert(!calico_stream_decrypt(&y, data, len, overhead));
-			assert(!memcmp(data, orig, len));
+			assert(SecureEqual(data, orig, len));
 
 			// Send y -> x
 
@@ -378,7 +379,7 @@ void StreamModeTest() {
 			assert(calico_datagram_encrypt((calico_state*)&y, data, orig, len, overhead));
 
 			assert(!calico_stream_decrypt(&x, data, len, overhead));
-			assert(!memcmp(data, orig, len));
+			assert(SecureEqual(data, orig, len));
 		}
 	}
 }
@@ -422,7 +423,7 @@ void StressTest() {
 			// Add 5% packetloss
 			if (prng.Next() % 100 >= 5) {
 				assert(!calico_datagram_decrypt(&y, data, len, overhead));
-				assert(!memcmp(data, orig, len));
+				assert(SecureEqual(data, orig, len));
 			}
 
 			// Send y -> x
@@ -438,7 +439,7 @@ void StressTest() {
 			// Add 5% packetloss
 			if (prng.Next() % 100 >= 5) {
 				assert(!calico_datagram_decrypt(&x, data, len, overhead));
-				assert(!memcmp(data, orig, len));
+				assert(SecureEqual(data, orig, len));
 			}
 		}
 	}
