@@ -1,5 +1,5 @@
 /*
-	Copyright (c) 2012-2013 Christopher A. Taylor.  All rights reserved.
+	Copyright (c) 2012-2014 Christopher A. Taylor.  All rights reserved.
 
 	Redistribution and use in source and binary forms, with or without
 	modification, are permitted provided that the following conditions are met:
@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define CALICO_VERSION 3
+#define CALICO_VERSION 4
 
 /*
  * Verify binary compatibility with the Calico API on startup.
@@ -50,6 +50,10 @@ extern "C" {
  */
 extern int _calico_init(int expected_version);
 #define calico_init() _calico_init(CALICO_VERSION)
+
+typedef struct {
+	char internal[480];
+} calico_stream_only;
 
 typedef struct {
 	char internal[620];
@@ -93,6 +97,12 @@ enum CalicoOverhead {
  * It is important to check the return value to avoid active attacks.
  */
 extern int calico_key(calico_state *S, int role, const void *key, int key_bytes);
+
+/*
+ * To cut the amount of memory required for encryption in half, a TCP-stream-
+ * only mode is also offered.
+ */
+extern int calico_key_stream_only(calico_stream_only *S, int role, const void *key, int key_bytes);
 
 /*
  * Encrypt plaintext into ciphertext for datagram transport
@@ -142,6 +152,8 @@ extern int calico_datagram_decrypt(calico_state *S, void *ciphertext, int *ciphe
 /*
  * Encrypt plaintext into ciphertext for stream transport
  *
+ * This function accepts either a calico_state or calico_stream_only object.
+ *
  * TCP-based protocols work best with this type of encryption.
  *
  * Note that encrypting more messages at once is far more
@@ -163,7 +175,7 @@ extern int calico_datagram_decrypt(calico_state *S, void *ciphertext, int *ciphe
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_stream_encrypt(calico_state *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes);
+extern int calico_stream_encrypt(void *S, const void *plaintext, int plaintext_bytes, void *ciphertext, int *ciphertext_bytes);
 
 /*
  * Decrypt ciphertext into plaintext from stream transport
@@ -182,15 +194,15 @@ extern int calico_stream_encrypt(calico_state *S, const void *plaintext, int pla
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_stream_decrypt(calico_state *S, void *ciphertext, int *ciphertext_bytes);
+extern int calico_stream_decrypt(void *S, void *ciphertext, int *ciphertext_bytes);
 
 /*
- * Clean up a calico_state object
+ * Clean up a calico_state or calico_stream_only object
  *
  * The purpose of cleaning up the object is to securely erase the internal
  * state of the Calico session.
  */
-extern void calico_cleanup(calico_state *S);
+extern void calico_cleanup(void *S);
 
 
 #ifdef __cplusplus
