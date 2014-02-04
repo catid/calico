@@ -98,7 +98,7 @@ VHash.o : src/VHash.cpp
 	$(CCPP) $(CFLAGS) -c src/VHash.cpp
 
 chacha.o : chacha-opt/chacha.c
-	$(CC) $(CFLAGS) -c chacha-opt/chacha.c
+	$(CC) $(CFLAGS) -std=c99 -c chacha-opt/chacha.c
 
 chacha_blocks_ssse3-64.o : chacha-opt/chacha_blocks_ssse3-64.S
 	$(CC) $(CFLAGS) -c chacha-opt/chacha_blocks_ssse3-64.S
