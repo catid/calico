@@ -45,7 +45,7 @@ typedef struct _antireplay_state {
 } antireplay_state;
 
 
-void antireplay_init(antireplay_state *S, u64 iv_datagram_local, u64 iv_datagram_remote);
+void antireplay_init(antireplay_state *S);
 
 bool antireplay_check(antireplay_state *S, u64 remote_iv);
 

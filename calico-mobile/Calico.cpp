@@ -98,7 +98,7 @@ int calico_key(calico_state *S, int role, const void *key, int key_bytes) {
 
 	// Expand key into two keys using ChaCha20:
 
-	static const int KEY_BYTES = sizeof(chacha_vmac_state) + 32;
+	static const int KEY_BYTES = sizeof(chacha_vmac_state);
 
 	char keys[KEY_BYTES + KEY_BYTES];
 	if (!chacha_key_expand((const char *)key, keys, sizeof(keys))) {
@@ -116,18 +116,12 @@ int calico_key(calico_state *S, int role, const void *key, int key_bytes) {
 	vhash_set_key(&state->local.hash_state);
 	vhash_set_key(&state->remote.hash_state);
 
-	// Grab the IVs from the key bytes
-	const u64 *local_ivs = reinterpret_cast<const u64 *>( lkey + sizeof(chacha_vmac_state) );
-	const u64 *remote_ivs = reinterpret_cast<const u64 *>( rkey + sizeof(chacha_vmac_state) );
-	u64 datagram_local = getLE(local_ivs[0]);
-	u64 datagram_remote = getLE(remote_ivs[0]);
-
 	// Initialize the IV subsystem for streams
-	state->stream_local = getLE(local_ivs[1]);
-	state->stream_remote = getLE(remote_ivs[1]);
+	state->stream_local = 0;
+	state->stream_remote = 0;
 
 	// Initialize the IV subsystem for datagrams
-	antireplay_init(&state->window, datagram_local, datagram_remote);
+	antireplay_init(&state->window);
 
 	CAT_SECURE_OBJCLR(keys);
 
@@ -156,7 +150,7 @@ int calico_key_stream_only(calico_stream_only *S, int role, const void *key, int
 
 	// Expand key into two keys using ChaCha20:
 
-	static const int KEY_BYTES = sizeof(chacha_vmac_state) + 32;
+	static const int KEY_BYTES = sizeof(chacha_vmac_state);
 
 	char keys[KEY_BYTES + KEY_BYTES];
 	if (!chacha_key_expand((const char *)key, keys, sizeof(keys))) {
@@ -174,13 +168,9 @@ int calico_key_stream_only(calico_stream_only *S, int role, const void *key, int
 	vhash_set_key(&state->local.hash_state);
 	vhash_set_key(&state->remote.hash_state);
 
-	// Grab the IVs from the key bytes
-	const u64 *local_ivs = reinterpret_cast<const u64 *>( lkey + sizeof(chacha_vmac_state) );
-	const u64 *remote_ivs = reinterpret_cast<const u64 *>( rkey + sizeof(chacha_vmac_state) );
-
 	// Initialize the IV subsystem for streams
-	state->stream_local = getLE(local_ivs[1]);
-	state->stream_remote = getLE(remote_ivs[1]);
+	state->stream_local = 0;
+	state->stream_remote = 0;
 
 	CAT_SECURE_OBJCLR(keys);
 
@@ -199,8 +189,16 @@ int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plain
 		return -1;
 	}
 
-	// Select next IV
-	const u64 iv = state->window.datagram_local++;
+	// Get next IV
+	const u64 iv = state->window.datagram_local;
+
+	// If out of IVs,
+	if (iv == 0xffffffffffffffffULL) {
+		return -1;
+	}
+
+	// Increment IV
+	state->window.datagram_local = iv + 1;
 
 	// Encrypt and generate MAC
 	u64 mac = chacha_encrypt(&state->local, state->local.datagram_key, iv, plaintext, ciphertext, bytes);
@@ -274,8 +272,16 @@ int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext, int 
 		return -1;
 	}
 
-	// Select next IV
-	const u64 iv = state->stream_local++;
+	// Get next IV
+	const u64 iv = state->stream_local;
+
+	// If out of IVs,
+	if (iv == 0xffffffffffffffffULL) {
+		return -1;
+	}
+
+	// Increment IV
+	state->stream_local = iv + 1;
 
 	// Encrypt and generate MAC
 	u64 mac = chacha_encrypt(&state->local, state->local.stream_key, iv, plaintext, ciphertext, bytes);
