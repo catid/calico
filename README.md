@@ -64,6 +64,7 @@ be a bottleneck for any network application.
 
 These tests were also re-run with valgrind, which took a lot longer. =)
 
+
 ## Usage
 
 #### Example Usage
@@ -133,6 +134,7 @@ It should port well to any platform, since it does not use any inline assembly o
 
 The reference version of ChaCha is good enough for a standard portable codebase, though to get good
 server performance you should pick the best version for your target.
+
 
 #### API Reference
 
@@ -233,3 +235,4 @@ find it useful and would like to buy me a coffee, consider [tipping](https://www
 
 Thanks to Sam Hughes ( sam@rethinkdb.com ) for fixing an integer overflow vulnerability in an
 early version of the software.
+

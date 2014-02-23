@@ -118,6 +118,11 @@ extern int calico_key_stream_only(calico_stream_only *S, int role, const void *k
  * buffer will be set to the encrypted message, which is the same size as the
  * plaintext buffer, and may also be done in-place.
  *
+ * If more than 2^64 messages are encrypted with this function, it will start
+ * to return non-zero indicating a failure.  This should never happen, but the
+ * proper response is to terminate the connection and reconnect when encryption
+ * fails in general.
+ *
  * Transmit the overhead buffer along with the ciphertext.
  *
  * Preconditions:
@@ -155,6 +160,11 @@ extern int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
  * The plaintext buffer should contain the message to encrypt.  The ciphertext
  * buffer will be set to the encrypted message, which is the same size as the
  * plaintext buffer, and may also be done in-place.
+ *
+ * If more than 2^64 messages are encrypted with this function, it will start
+ * to return non-zero indicating a failure.  This should never happen, but the
+ * proper response is to terminate the connection and reconnect when encryption
+ * fails in general.
  *
  * Transmit the overhead buffer along with the ciphertext.
  *
