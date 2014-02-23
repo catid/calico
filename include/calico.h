@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define CALICO_VERSION 5
+#define CALICO_VERSION 6
 
 /*
  * Verify binary compatibility with the Calico API on startup.
