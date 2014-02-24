@@ -244,14 +244,24 @@ The IVs are truncated during encryption to 24 bits, which is tuned for expected
 file transfer data rates up to 10 GB/s.  Truncating to 16 bits would allow for
 up to 45 MB/s data rates, which did not seem to be future-proof enough for me.
 
-#### Encryption
+#### Encryption: Importance of AEAD
+
+This is an AEAD scheme.  The MAC is the "Authenticated" part, represented as the 8-byte
+tag on each message.  The cipher is the "Encryption" part, which manifests itself in the
+ciphertext of the message.  And the "Additional Data" is the IV for the message.
+
+Note that some people define AEAD as only applying to block ciphers, and I am using this
+term in a broader sense.
 
 The trickiest part of the encryption in the AEAD construction is how the MAC is applied.
+
 If the IV does not affect the MAC, then it is easy to replay past messages by reusing an
 old MAC and associated encrypted data with an unused IV.  The approach taken by Calico
 to incorporate the IV efficiently into the MAC is by XORing the IV into the low bits of
 the key, so that each message is given a MAC tag based on a slightly different key.
 This avoids the replay attack vulnerability and uses no extra CPU time.
+
+#### Encryption: Choice of ChaCha Rounds
 
 To achieve low overhead, the ChaCha14 stream cipher was chosen for use in Calico.
 The choice of this stream cipher was motivated by the lack of padding for lower overhead
