@@ -32,8 +32,7 @@ using namespace cat;
 
 #define POLY1305_BLOCK_SIZE 16
 
-static void poly1305_block(u64 m0, u64 m1, const u64 s1,
-						   const u64 s2, u64 h[3], u64 d[3])
+static void poly1305_block(u64 m0, u64 m1, const u64 s1, const u64 s2, u64 h[3], const u64 r[3])
 {
 	static const u64 MSB = (u64)1 << 40; // = 2^128 in this field
 
@@ -41,6 +40,8 @@ static void poly1305_block(u64 m0, u64 m1, const u64 s1,
 	h[0] += m0 & 0xfffffffffffULL;
 	h[1] += ((m0 >> 44) | (m1 << 20)) & 0xfffffffffffULL;
 	h[2] += ((m1 >> 24) & 0x3ffffffffffULL) | MSB;
+
+	u64 d[3];
 
 	// h *= r
 	d[0] = (u128)h[0] * r[0] + (u128)h[1] * s2 + (u128)h[2] * s1;
@@ -65,8 +66,8 @@ static void poly1305_block(u64 m0, u64 m1, const u64 s1,
 	h[1] += c;
 }
 
-void poly1305_mac(const char key[32], const u64 iv,
-				  const void *data, int bytes, char tag[16])
+void cat::poly1305_mac(const char key[32], const u64 iv,
+					   const void *data, int bytes, char tag[16])
 {
 	const u64 *keys = reinterpret_cast<const u64 *>( key );
 
@@ -89,7 +90,7 @@ void poly1305_mac(const char key[32], const u64 iv,
 	const u64 s2 = r[2] * (5 << 2);
 
 	// Add the IV and message length into the MAC to avoid extension attacks
-	poly1305_block(iv, bytes, s1, s2, h, d);
+	poly1305_block(iv, bytes, s1, s2, h, r);
 
 	// For each block,
 	const u64 *data_word = reinterpret_cast<const u64 *>( data );
@@ -97,7 +98,7 @@ void poly1305_mac(const char key[32], const u64 iv,
 		u64 m0 = getLE(data_word[0]);
 		u64 m1 = getLE(data_word[1]);
 
-		poly1305_block(m0, m1, s1, s2, h, d);
+		poly1305_block(m0, m1, s1, s2, h, r);
 
 		data_word += 2;
 		bytes -= POLY1305_BLOCK_SIZE;
@@ -124,7 +125,7 @@ void poly1305_mac(const char key[32], const u64 iv,
 		data_word = reinterpret_cast<const u64 *>( final );
 		m0 = getLE(data_word[0]);
 		m1 = getLE(data_word[1]);
-		poly1305_block(m0, m1, s1, s2, h, d);
+		poly1305_block(m0, m1, s1, s2, h, r);
 	}
 
 	// Final reduction mod p
@@ -165,10 +166,10 @@ void poly1305_mac(const char key[32], const u64 iv,
 	r[2] = h[2] + c - ((u64)1 << 42);
 
 	// If h >= p, h = r
-	const u64 mask = (g[2] >> 63) - 1;
-	h[0] ^= (r[0] ^ (h[0]) & mask;
-	h[1] ^= (r[1] ^ (h[1]) & mask;
-	h[2] ^= (r[2] ^ (h[2]) & mask;
+	const u64 mask = (h[2] >> 63) - 1;
+	h[0] ^= (r[0] ^ h[0]) & mask;
+	h[1] ^= (r[1] ^ h[1]) & mask;
+	h[2] ^= (r[2] ^ h[2]) & mask;
 
 	// h += pad part of key
 	const u64 pad0 = getLE(keys[2]);

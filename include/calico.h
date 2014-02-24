@@ -56,11 +56,11 @@ extern int _calico_init(int expected_version);
 
 
 typedef struct {
-	char internal[480];
+	char internal[160];
 } calico_stream_only;
 
 typedef struct {
-	char internal[620];
+	char internal[300];
 } calico_state;
 
 
@@ -77,7 +77,7 @@ enum CalicoOverhead {
 /*
  * Initializes the calico_state object with a role and key
  *
- * Each side of the conversation needs to select a unique role.  If both sides
+ * Each side of the conversation must select a unique role.  If both sides
  * attempt to take on the same role, then the message contents may not be
  * protected.  The role is either CALICO_INITIATOR or CALICO_RESPONDER.
  *
@@ -87,8 +87,8 @@ enum CalicoOverhead {
  *
  * After keying the Calico state object, it may be used to encrypt or decrypt
  * messages.  Both datagram and stream mode may be used from the same object.
- * It is important to only call calico_key() once per key.  Do not use separate
- * calico_state objects to transmit and to receive data.
+ * It is important to only call calico_key() once per key.  It is not necessary
+ * to use two calico_state objects to transmit and receive data; one is enough.
  *
  * When finished with the Calico state object, call calico_cleanup().
  *

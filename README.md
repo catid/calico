@@ -11,16 +11,17 @@ The Calico library can encrypt single packets or streams of data, so that it
 can be used for UDP-based or TCP-based protocols.  It uses the most efficient
 and portable methods available for speed, and it is also optimized for low
 overhead: Only 11 bytes per datagram or 8 bytes per stream message.  Calico
-rejects invalid messages as quickly as possible -- roughly 4x faster than
+rejects invalid messages as quickly as possible -- roughly 2x faster than
 normal decryption.
+
+Calico implements Authenticated Encryption with Associated Data (AEAD) using
+a similar construction Langley's proposal for using ChaCha20 with Poly1305 for
+TLS [4].
 
 Calico does not provide key agreement.  See the [Tabby](https://github.com/catid/tabby)
 library for an efficient and portable implementation of key agreement.  Calico
 also does not open any sockets for you - It only encodes and decodes the data.
 Calico does not consume any randomness to operate.
-
-Calico uses Chacha-20 for key expansion, ChaCha-14 for encryption, and VMAC
-for message authentication.
 
 
 ## Benchmarks
@@ -144,10 +145,40 @@ for the API reference.
 
 ## Details
 
-The single 32 byte key provided to `calico_key` is expanded into keys for VHash, the first outgoing
-IV, and the 32 byte ChaCha-14 key, for both the stream and the datagram modes.  Each mode gets its
-own first IV and key.  Each side gets their own set of unique keys.  And each side decides which of
-the keys to use, based on the `role` parameter: Either `CALICO_INITIATOR` or `CALICO_RESPONDER`.
+#### Setup
+
+The single 32 byte key provided to `calico_key` is expanded into two encryption keys for
+stream-mode output, and two encryption keys for datagram-mode output.  Each user decides
+which of the keys to use, based on their role: `CALICO_INITIATOR` or `CALICO_RESPONDER`.
+
+The remote-expected and next-local IV for datagram/stream modes are set to 0.
+
+#### Modes
+
+The user can choose to encrypt either in "stream" or "datagram" mode.  These modes
+correspond to different keys and different next-local IVs.
+
+In datagram mode, the overhead added by encryption includes the Message Authentication
+Code (MAC) tag, and the unique IV corresponding to the message.  The IVs are incremented
+by one each time to ensure they are unique and to simplify the code.  The overhead for
+IV takes 3 bytes, tuned for expected file transfer data rates up to 10 GB/s.  The overhead
+for the MAC tag takes 8 bytes.  So overall datagram mode overhead is 11 bytes.
+
+In stream mode, intended for TCP transport, there is no need to explicitly send the IV
+used for each message as this can be inferred implicitly by the order in which the data
+is received.  3 bytes are saved and only the MAC tag is transmitted as overhead.
+So overall stream mode overhead is 8 bytes.
+
+To save roughly 150 bytes, the stream mode can be selected exclusively by using the
+`calico_key_stream_only` function.  In this mode the Calico state object does not include
+memory for the datagram IVs nor does it include memory for the bit vector used to avoid
+replay attacks.
+
+#### Encryption
+
+Calico uses the ChaCha14 cipher.
+
+
 
 During encryption, ChaCha-14 is keyed with the endpoint's key and with the message's unique IV number,
 which increments by 1 for each outgoing message.  The IV is truncated to the low 3 bytes and will be
@@ -177,6 +208,46 @@ VMAC was chosen over Poly1305 for better speed, portability, and good published 
 The best known attack against ChaCha is on 7 rounds [3][4], so 14 rounds seems like more than enough of
 a security margin in trade for exceptional speed.
 
+
+## Discussion
+
+The project goals are (in order):
+
++ Avoiding Timing Side-Channels
++ Avoiding Freed Memory Side-Channels
++ Simplicity
++ Speed
++ Low Overhead
+
+Calico attempts to use existing, trusted primitives in efficient and simple combination
+to avoid misusing or introducing new buggy code.
+
+The main primitives, ChaCha and Poly1305, are trusted and well-analyzed and moreover
+do not have timing side-channels and make little use of state so it is easy to erase.
+These functions are also simple, though I have chosen to use existing implementations
+rather than writing much code of my own.
+
+Care is taken to avoid leaking important information by leaving it on the stack or
+in memory somewhere to be read later.
+
+#### Setup
+
+An alternative initial state would be a random number for each IV.  This would
+not help meaningfully with security because the keys are already large enough.
+The advantage of starting with 0 is that it will never roll over and the code
+can easily check for IVs that are about to reach 2^64 to avoid re-using IVs.
+
+#### Encryption
+
+The cipher chosen for encryption is the ChaCha cipher, which has a selectable number of
+rounds.  The number of rounds is commonly post-fixed to the name of the cipher as in
+"ChaCha8" is an 8-round version of the ChaCha cipher.
+
+In [1], it is shown that ChaCha8 does not provide 256-bit security.  And in [2] a
+proof for security against differential cryptoanalysis is given for ChaCha15.
+
+It seems then that a comfortable margin of security is provided by ChaCha14, which offers
+30% faster execution time as compared to the full 20-round version.
 
 #### VMAC versus SipHash
 
@@ -215,17 +286,17 @@ but there is too big a gap in my opinion.
 
 ## References
 
-##### [1] ["VHASH Security" (Dai Krovetz 2007)](https://eprint.iacr.org/2007/338.pdf)
-Security analysis of VHASH, the core algorithm of the MAC used by Calico.
-
-##### [2] ["Key-Recovery Attacks on Universal Hash Function based MAC Algorithms" (Handschuh Preneel 2008)](http://www.iacr.org/archive/crypto2008/51570145/51570145.pdf)
-Further security analysis of VHASH and other universal hash functions, exploring classes of weak keys and other failures.
-
-##### [3] ["New Features of Latin Dances: Analysis of Salsa, ChaCha, and Rumba" (Aumasson et al 2008)](https://eprint.iacr.org/2007/472.pdf)
+##### [1] ["New Features of Latin Dances: Analysis of Salsa, ChaCha, and Rumba" (Aumasson et al 2008)](https://eprint.iacr.org/2007/472.pdf)
 Cryptoanalysis of the ChaCha cipher used in Calico.
 
-##### [4] ["Latin Dances Revisited: New Analytic Results of Salsa20 and ChaCha" (Ishiguro 2012)](https://eprint.iacr.org/2012/065.pdf)
+##### [2] ["Latin Dances Revisited: New Analytic Results of Salsa20 and ChaCha" (Ishiguro 2012)](https://eprint.iacr.org/2012/065.pdf)
 Updated analysis of ChaCha security.
+
+##### [3] ["Towards Finding Optimal Differential Characteristics for ARX" (Mouha Preneel 2013)](http://eprint.iacr.org/2013/328.pdf)
+A proof for security against differential cryptoanalysis is given for ChaCha-15.
+
+##### [4] ["ChaCha20 and Poly1305 based Cipher Suites for TLS" (Langley 2013)](https://tools.ietf.org/html/draft-agl-tls-chacha20poly1305-01)
+The accepted IETF proposal for incorporating ChaCha and Poly1305 for TLS.
 
 
 ## Credits
