@@ -330,6 +330,61 @@ void BenchmarkDecryptSuccess() {
 }
 
 /*
+ * Test to ensure that the MAC includes the IV
+ *
+ * The first 3 bytes of overhead are assumed to be the IV for this test
+ *
+ * I verified that if the last parameter to siphash24() that is currently
+ * the IV is set to 0 instead, then it will fail this test.
+ */
+void ReplayMACTest() {
+	char key[32] = {0};
+
+	static const int IV_BYTES = 3;
+	static const int IV_BITS = IV_BYTES * 8;
+	static const u32 IV_MSB = (1 << IV_BITS);
+	static const u32 IV_MASK = (IV_MSB - 1);
+	static const u32 IV_FUZZ = 0x286AD7;
+
+	calico_state x, y;
+	char data_iv0[32] = {0};
+	char overhead_iv0[CALICO_DATAGRAM_OVERHEAD];
+	char data_iv1[32] = {1};
+	char overhead_iv1[CALICO_DATAGRAM_OVERHEAD];
+	char plaintext[32];
+	char data_iv_mod[32];
+	char overhead_iv_mod[CALICO_DATAGRAM_OVERHEAD];
+
+	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));
+	assert(!calico_key(&y, CALICO_RESPONDER, key, sizeof(key)));
+
+	assert(!calico_datagram_encrypt(&x, data_iv0, data_iv0, 32, overhead_iv0));
+	assert(!calico_datagram_encrypt(&x, data_iv1, data_iv1, 32, overhead_iv1));
+
+	memcpy(plaintext, data_iv0, 32);
+	assert(!calico_datagram_decrypt(&y, plaintext, 32, overhead_iv0));
+
+	// Use IV = 1, but keep the MAC the same as for IV = 0
+
+	memcpy(overhead_iv_mod, overhead_iv0, sizeof(overhead_iv_mod));
+
+	const u64 tag = *(u64*)(overhead_iv_mod + 3);
+	const u32 iv = 1;
+
+	// Obfuscate the truncated IV
+	u32 trunc_iv = iv;
+	trunc_iv -= (u32)tag;
+	trunc_iv ^= IV_FUZZ;
+
+	// Store IV and tag
+	overhead_iv_mod[0] = (u8)trunc_iv;
+	overhead_iv_mod[1] = (u8)(trunc_iv >> 16);
+	overhead_iv_mod[2] = (u8)(trunc_iv >> 8);
+
+	assert(calico_datagram_decrypt(&y, data_iv0, 32, overhead_iv_mod));
+}
+
+/*
  * Use stream API
  */
 void StreamModeTest() {
@@ -469,6 +524,7 @@ TestDescriptor TEST_FUNCTIONS[] = {
 	{ BenchmarkDecryptFail, "Benchmark Decrypt() Rejection" },
 	{ BenchmarkDecryptSuccess, "Benchmark Decrypt() Accept" },
 
+	{ ReplayMACTest, "Replay MAC+Ciphertext with new IV test" },
 	{ StreamModeTest, "Stream API Test" },
 
 	{ StressTest, "2 Million Random Message Stress Test" },
