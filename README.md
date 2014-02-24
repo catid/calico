@@ -16,7 +16,8 @@ normal decryption.
 
 Calico implements Authenticated Encryption with Associated Data (AEAD) using
 a similar construction Langley's proposal for using ChaCha20 with Poly1305 for
-TLS [4].
+TLS [4].  The main difference is that the simpler SipHash-2-4 MAC is used
+for higher speed and lower code complexity.
 
 Calico does not provide key agreement.  See the [Tabby](https://github.com/catid/tabby)
 library for an efficient and portable implementation of key agreement.  Calico
@@ -161,8 +162,8 @@ correspond to different keys and different next-local IVs.
 In datagram mode, the overhead added by encryption includes the Message Authentication
 Code (MAC) tag, and the unique IV corresponding to the message.  The IVs are incremented
 by one each time to ensure they are unique and to simplify the code.  The overhead for
-IV takes 3 bytes, tuned for expected file transfer data rates up to 10 GB/s.  The overhead
-for the MAC tag takes 8 bytes.  So overall datagram mode overhead is 11 bytes.
+IV takes 3 bytes.  The overhead for the MAC tag takes 8 bytes.  So overall datagram mode
+overhead is 11 bytes.
 
 In stream mode, intended for TCP transport, there is no need to explicitly send the IV
 used for each message as this can be inferred implicitly by the order in which the data
@@ -178,7 +179,7 @@ replay attacks.
 
 When a user calls `calico_datagram_encrypt` to encrypt a message, it reads the next IV to
 send and verifies that it is not out of IVs to use.  It then encrypts the plaintext of
-the message with ChaCha14 and the local datagram key.  A Poly1305 MAC tag is generated
+the message with ChaCha14 and the local datagram key.  A SipHash-2-4 MAC tag is generated
 for the encrypted ciphertext of the message.  The IV and tag are stored in the overhead
 for the message.  Then the message and its overhead are transmitted to the remote user.
 
@@ -186,19 +187,14 @@ The IV is truncated to its 3 low bytes (24 bits) and is obfuscated to make the o
 look more random.  The obfuscation used is to first subtract off the MAC tag from it, and
 then XOR the 24-bit value 0x286AD7.
 
-To generate the MAC tag with Poly1305, the first 64-byte block of ChaCha output is set
-aside until after encryption completes.  The low 32 bytes of it are used to key Poly1305.
-During Poly1305 evaluation, the last block is padded by a "0x01" byte and then all zeroes.
-
 #### Decryption
 
 Message decryption and authentication is performed by `calico_datagram_decrypt`.
 It reads the 24-bit truncated IV from the overhead and uses the last accepted IV to
 expand it back to the full 64-bit IV value.  The IV is checked to make sure it was not
 previous accepted, to avoid replay attacks.  Using the IV and remote datagram key it
-initializes the ChaCha cipher.  It then generates the first 64 bytes of ChaCha block
-output and uses it to key the Poly1305 MAC.  The MAC tag for the encrypted message
-is recalculated and it is compared to the provided one in the overhead of the message
+initializes the ChaCha cipher.  The SipHash MAC tag for the encrypted message is
+recalculated and it is compared to the provided one in the overhead of the message
 in constant-time.  If the MAC tag does not match, then the message is rejected.
 The message is then decrypted.  And the IV is marked as having been accepted.
 
@@ -212,11 +208,12 @@ The project goals are (in order):
 + Simplicity
 + Speed
 + Low Overhead
++ Low Memory Size of per-Connection State
 
 Calico attempts to use existing, trusted primitives in efficient and simple combination
 to avoid misusing or introducing new buggy code.
 
-The main primitives, ChaCha and Poly1305, are trusted and well-analyzed and moreover
+The main primitives, ChaCha and SipHash, are trusted and well-analyzed and moreover
 do not have timing side-channels and make little use of state so it is easy to erase.
 These functions are also simple, though I have chosen to use existing implementations
 rather than writing much code of my own.
@@ -236,6 +233,10 @@ An alternative initial state would be a random number for each IV.  This would
 not help meaningfully with security because the keys are already large enough.
 The advantage of starting with 0 is that it will never roll over and the code
 can easily check for IVs that are about to reach 2^64 to avoid re-using IVs.
+
+The IVs are truncated during encryption to 24 bits, which is tuned for expected
+file transfer data rates up to 10 GB/s.  Truncating to 16 bits would allow for
+up to 45 MB/s data rates, which did not seem to be future-proof enough for me.
 
 #### Encryption
 
@@ -259,6 +260,13 @@ It seems then that a comfortable margin of security is provided by ChaCha14, whi
 During decryption a 1024-bit window is used to keep track of accepted IVs.  This value
 was chosen because it is the IPsec largest window allowed.  But it may be worth looking
 into expanding this window for high-speed transfers.
+
+#### SipHash versus Poly1305 versus VMAC
+
+The fastest MAC available right now is VMAC, which is almost twice as fast as a naive
+implementation of SipHash-2-4 without SIMD optimizations.  However, VMAC requires a lot
+of extra memory per connection and it is much more complicated.  I was not willing to
+maintain my VMAC code and decided to go with the simpler albiet slower SipHash approach.
 
 
 ## References
