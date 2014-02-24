@@ -27,7 +27,7 @@
 */
 
 #include "AuthEnc.hpp"
-#include "Poly1305.hpp"
+#include "SipHash.hpp"
 #include "EndianNeutral.hpp"
 using namespace cat;
 
@@ -53,7 +53,7 @@ bool cat::auth_key_expand(const char key[32], void *buffer, int bytes)
 	return true;
 }
 
-u64 cat::auth_encrypt(auth_enc_state *state, const char key[32],
+u64 cat::auth_encrypt(auth_enc_state *state, const char key[48],
 					  u64 iv_counter, const void *from, void *to, int bytes)
 {
 	const u64 iv = getLE64(iv_counter);
@@ -62,24 +62,14 @@ u64 cat::auth_encrypt(auth_enc_state *state, const char key[32],
 	chacha_state S;
 	chacha_init(&S, (const chacha_key *)key, (const chacha_iv *)&iv, 14);
 
-	// Generate MAC key
-	// Take first block of ChaCha and discard the high 32 bytes
-	char mac_key[32];
-	chacha_blocks_impl(&S, 0, (u8 *)mac_key, sizeof(mac_key));
-
 	// Encrypt data
 	chacha_blocks_impl(&S, (const u8 *)from, (u8 *)to, bytes);
 
 	// Generate MAC tag
-	char tag[16];
-	poly1305_mac(mac_key, iv, to, bytes, tag);
-
-	// Return low 8 bytes for the tag, endian-specific
-	const u64 *tag_word = reinterpret_cast<const u64 *>( tag );
-	return tag_word[0];
+	return siphash24(key + 32, to, bytes);
 }
 
-bool cat::auth_decrypt(auth_enc_state *state, const char key[32],
+bool cat::auth_decrypt(auth_enc_state *state, const char key[48],
 					   u64 iv_counter, void *buffer, int bytes, u64 provided_tag)
 {
 	const u64 iv = getLE64(iv_counter);
@@ -88,18 +78,8 @@ bool cat::auth_decrypt(auth_enc_state *state, const char key[32],
 	chacha_state S;
 	chacha_init(&S, (const chacha_key *)key, (const chacha_iv *)&iv, 14);
 
-	// Generate MAC key
-	// Take first block of ChaCha and discard the high 32 bytes
-	char mac_key[32];
-	chacha_blocks_impl(&S, 0, (u8 *)mac_key, sizeof(mac_key));
-
 	// Generate expected MAC tag
-	char tag[16];
-	poly1305_mac(mac_key, iv, buffer, bytes, tag);
-
-	// Grab the low 8 bytes as the expected tag
-	const u64 *tag_word = reinterpret_cast<const u64 *>( tag );
-	const u64 expected_tag = tag_word[0];
+	const u64 expected_tag = siphash24(key + 32, buffer, bytes);
 
 	// Verify MAC tag in constant-time
 	const u64 delta = expected_tag ^ provided_tag;

@@ -250,7 +250,7 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
 	trunc_iv &= IV_MASK;
 
 	// Reconstruct the full IV counter
-	u64 iv = ReconstructCounter<IV_BITS>(state->window.datagram_remote, trunc_iv);
+	const u64 iv = ReconstructCounter<IV_BITS>(state->window.datagram_remote, trunc_iv);
 
 	// Validate IV
 	if (!antireplay_check(&state->window, iv)) {
@@ -291,7 +291,7 @@ int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext,
 	state->stream_local = iv + 1;
 
 	// Encrypt and generate MAC tag
-	u64 tag = auth_encrypt(&state->local, state->local.stream_key, iv, plaintext, ciphertext, bytes);
+	const u64 tag = auth_encrypt(&state->local, state->local.stream_key, iv, plaintext, ciphertext, bytes);
 
 	u64 *overhead_tag = reinterpret_cast<u64 *>( overhead );
 

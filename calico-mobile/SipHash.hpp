@@ -1,5 +1,5 @@
 /*
-	Copyright (c) 2012-2013 Christopher A. Taylor.  All rights reserved.
+	Copyright (c) 2013 Christopher A. Taylor.  All rights reserved.
 
 	Redistribution and use in source and binary forms, with or without
 	modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@
 	* Redistributions in binary form must reproduce the above copyright notice,
 	  this list of conditions and the following disclaimer in the documentation
 	  and/or other materials provided with the distribution.
-	* Neither the name of Calico nor the names of its contributors may be used
+	* Neither the name of LibCat nor the names of its contributors may be used
 	  to endorse or promote products derived from this software without
 	  specific prior written permission.
 
@@ -26,22 +26,28 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef CAT_POLY1305_HPP
-#define CAT_POLY1305_HPP
+#ifndef CAT_SIPHASH_HPP
+#define CAT_SIPHASH_HPP
 
 #include "Platform.hpp"
+
+/*
+ * Portable C++ implementation of SipHash-2-4
+ *
+ * The algorithm was developed and analyzed by Bernstein and Aumasson in 2012:
+ * https://131002.net/siphash/siphash.pdf
+ *
+ * Based on the reference C version:
+ * https://131002.net/siphash/siphash24.c
+ */
 
 namespace cat {
 
 
-/*
- * This is the Poly1305 Wegman-Carter hash function.  It becomes a MAC when
- * the result is encrypted.
- */
-void poly1305_mac(const char key[32], const u64 iv, const void *data, int bytes, char tag[16]);
+u64 siphash24(const char key[16], const void *m, int len);
 
 
 } // namespace cat
 
-#endif // CAT_POLY1305_HPP
+#endif // CAT_SIPHASH_HPP
 
