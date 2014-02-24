@@ -43,9 +43,9 @@ using namespace cat;
 	SIP_HALF_ROUND(v0, v1, v2, v3, 13, 16); \
 	SIP_HALF_ROUND(v2, v1, v0, v3, 17, 21);
 
-u64 cat::siphash24(const char key[16], const void *vm, int len) {
+u64 cat::siphash24(const char key[16], const void *vm, int len, const u64 ad) {
 	// Convert key into two 64-bit integers
-	u64 k0 = getLE(*(const u64 *)key);
+	u64 k0 = getLE(*(const u64 *)key) ^ ad;
 	u64 k1 = getLE(*(const u64 *)(key + 8));
 
 	// Mix the key across initial state

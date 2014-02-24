@@ -39,12 +39,15 @@
  *
  * Based on the reference C version:
  * https://131002.net/siphash/siphash24.c
+ *
+ * Additional data (AD) is incorporated into the stock SipHash algorithm by
+ * XORing it into the key before use.
  */
 
 namespace cat {
 
 
-u64 siphash24(const char key[16], const void *m, int len);
+u64 siphash24(const char key[16], const void *vm, int len, const u64 ad = 0);
 
 
 } // namespace cat
