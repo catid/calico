@@ -38,7 +38,7 @@ release : library
 # Debug target
 
 debug : CFLAGS += $(DBGFLAGS)
-debug : LIBNAME = libcalico_debug.a
+debug : LIBNAME = bin/libcalico_debug.a
 debug : library
 
 
@@ -69,6 +69,11 @@ mactest : CFLAGS += -DUNIT_TEST $(OPTFLAGS)
 mactest : clean $(siphash_test_o) library
 	$(CCPP) $(siphash_test_o) $(LIBS) -o mactest
 	./mactest
+
+valgrind : CFLAGS += -DUNIT_TEST $(DBGFLAGS)
+valgrind : clean $(calico_test_o) debug
+	$(CCPP) $(calico_test_o) -L./bin -lcalico_debug -o valgrindtest
+	valgrind --dsymutil=yes --leak-check=yes ./valgrindtest
 
 
 # Shared objects
@@ -128,5 +133,5 @@ siphash_test.o : tests/siphash_test.cpp
 
 clean :
 	git submodule update --init
-	-rm test example $(shared_test_o) $(calico_test_o) $(calico_o)
+	-rm mactest test example *.o bin/*.a
 
