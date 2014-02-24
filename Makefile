@@ -11,7 +11,7 @@ DBGFLAGS = -g -O0 -DDEBUG -DCAT_CHACHA_IMPL
 CFLAGS = -Wall -fstrict-aliasing -I./libcat -I./include -I./chacha-opt \
 		 -Dchacha_blocks_impl=chacha_blocks_ssse3 -Dhchacha_impl=hchacha
 LIBNAME = bin/libcalico.a
-LIBS =
+LIBS = -L./bin -lcalico
 
 
 # Object files
@@ -51,12 +51,12 @@ library : $(calico_o)
 
 example : CFLAGS += -DUNIT_TEST $(OPTFLAGS)
 example : clean $(calico_example_o) library
-	$(CCPP) $(calico_example_o) $(LIBS) -L./bin -lcalico -o example
+	$(CCPP) $(calico_example_o) $(LIBS) -o example
 	./example
 
 test : CFLAGS += -DUNIT_TEST $(OPTFLAGS)
 test : clean $(calico_test_o) library
-	$(CCPP) $(calico_test_o) $(LIBS) -L./bin -lcalico -o test
+	$(CCPP) $(calico_test_o) $(LIBS) -o test
 	./test
 
 test-mobile : CFLAGS += -DUNIT_TEST $(OPTFLAGS)
