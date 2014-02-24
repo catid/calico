@@ -246,6 +246,13 @@ up to 45 MB/s data rates, which did not seem to be future-proof enough for me.
 
 #### Encryption
 
+The trickiest part of the encryption in the AEAD construction is how the MAC is applied.
+If the IV does not affect the MAC, then it is easy to replay past messages by reusing an
+old MAC and associated encrypted data with an unused IV.  The approach taken by Calico
+to incorporate the IV efficiently into the MAC is by XORing the IV into the low bits of
+the key, so that each message is given a MAC tag based on a slightly different key.
+This avoids the replay attack vulnerability and uses no extra CPU time.
+
 To achieve low overhead, the ChaCha14 stream cipher was chosen for use in Calico.
 The choice of this stream cipher was motivated by the lack of padding for lower overhead
 and the speed of the ChaCha stream cipher.
