@@ -56,7 +56,7 @@ bool cat::auth_key_expand(const char key[32], void *buffer, int bytes)
 u64 cat::auth_encrypt(auth_enc_state *state, const char key[48],
 					  u64 iv_counter, const void *from, void *to, int bytes)
 {
-	const u64 iv = getLE64(iv_counter);
+	const u64 iv = getLE(iv_counter);
 
 	// Setup the cipher with the key and IV
 	chacha_state S;
@@ -66,20 +66,20 @@ u64 cat::auth_encrypt(auth_enc_state *state, const char key[48],
 	chacha_blocks_impl(&S, (const u8 *)from, (u8 *)to, bytes);
 
 	// Generate MAC tag
-	return siphash24(key + 32, to, bytes);
+	return siphash24(key + 32, to, bytes, iv);
 }
 
 bool cat::auth_decrypt(auth_enc_state *state, const char key[48],
 					   u64 iv_counter, void *buffer, int bytes, u64 provided_tag)
 {
-	const u64 iv = getLE64(iv_counter);
+	const u64 iv = getLE(iv_counter);
 
 	// Setup the cipher with the key and IV
 	chacha_state S;
 	chacha_init(&S, (const chacha_key *)key, (const chacha_iv *)&iv, 14);
 
 	// Generate expected MAC tag
-	const u64 expected_tag = siphash24(key + 32, buffer, bytes);
+	const u64 expected_tag = siphash24(key + 32, buffer, bytes, iv);
 
 	// Verify MAC tag in constant-time
 	const u64 delta = expected_tag ^ provided_tag;

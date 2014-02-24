@@ -33,31 +33,31 @@ Output of `make test`:
 
 ~~~
 Running test 5 : Benchmark Initialize()
-Benchmark: Initialize() in 0.46532 usec on average / 2.14906e+06 per second
+Benchmark: Initialize() in 0.49264 usec on average / 2.02988e+06 per second
 +++ Test passed.
 
 Running test 6 : Benchmark Encrypt()
-calico_datagram_encrypt: 10000 bytes in 17.7296 usec on average / 564.028 MBPS / 56402.8 per second
-calico_datagram_encrypt: 1000 bytes in 2.08452 usec on average / 479.727 MBPS / 479727 per second
-calico_datagram_encrypt: 100 bytes in 0.41736 usec on average / 239.601 MBPS / 2.39601e+06 per second
-calico_datagram_encrypt: 10 bytes in 0.16808 usec on average / 59.4955 MBPS / 5.94955e+06 per second
-calico_datagram_encrypt: 1 bytes in 0.14167 usec on average / 7.05866 MBPS / 7.05866e+06 per second
+calico_datagram_encrypt: 10000 bytes in 8.30996 usec on average / 1203.38 MBPS / 120338 per second
+calico_datagram_encrypt: 1000 bytes in 1.11836 usec on average / 894.166 MBPS / 894166 per second
+calico_datagram_encrypt: 100 bytes in 0.24781 usec on average / 403.535 MBPS / 4.03535e+06 per second
+calico_datagram_encrypt: 10 bytes in 0.11381 usec on average / 87.8657 MBPS / 8.78657e+06 per second
+calico_datagram_encrypt: 1 bytes in 0.11607 usec on average / 8.61549 MBPS / 8.61549e+06 per second
 +++ Test passed.
 
 Running test 7 : Benchmark Decrypt() Rejection
-calico_datagram_decrypt: drops 10000 corrupted bytes in 10.1621 usec on average / 984.045 MBPS / 98404.5 per second
-calico_datagram_decrypt: drops 1000 corrupted bytes in 1.01723 usec on average / 983.062 MBPS / 983062 per second
-calico_datagram_decrypt: drops 100 corrupted bytes in 0.1323 usec on average / 755.858 MBPS / 7.55858e+06 per second
-calico_datagram_decrypt: drops 10 corrupted bytes in 0.05153 usec on average / 194.062 MBPS / 1.94062e+07 per second
-calico_datagram_decrypt: drops 1 corrupted bytes in 0.04611 usec on average / 21.6873 MBPS / 2.16873e+07 per second
+calico_datagram_decrypt: drops 10000 corrupted bytes in 10.4301 usec on average / 958.76 MBPS / 95876 per second
+calico_datagram_decrypt: drops 1000 corrupted bytes in 1.03877 usec on average / 962.677 MBPS / 962677 per second
+calico_datagram_decrypt: drops 100 corrupted bytes in 0.12755 usec on average / 784.006 MBPS / 7.84006e+06 per second
+calico_datagram_decrypt: drops 10 corrupted bytes in 0.04788 usec on average / 208.855 MBPS / 2.08855e+07 per second
+calico_datagram_decrypt: drops 1 corrupted bytes in 0.04111 usec on average / 24.325 MBPS / 2.4325e+07 per second
 +++ Test passed.
 
 Running test 8 : Benchmark Decrypt() Accept
-calico_datagram_decrypt: 10000 bytes in 18.0886 usec on average / 552.835 MBPS / 55283.5 per second
-calico_datagram_decrypt: 1000 bytes in 2.30292 usec on average / 434.231 MBPS / 434231 per second
-calico_datagram_decrypt: 100 bytes in 0.48768 usec on average / 205.052 MBPS / 2.05052e+06 per second
-calico_datagram_decrypt: 10 bytes in 0.2632 usec on average / 37.9939 MBPS / 3.79939e+06 per second
-calico_datagram_decrypt: 1 bytes in 0.24126 usec on average / 4.14491 MBPS / 4.14491e+06 per second
+calico_datagram_decrypt: 10000 bytes in 19.0175 usec on average / 525.833 MBPS / 52583.3 per second
+calico_datagram_decrypt: 1000 bytes in 2.3343 usec on average / 428.394 MBPS / 428394 per second
+calico_datagram_decrypt: 100 bytes in 0.56173 usec on average / 178.021 MBPS / 1.78021e+06 per second
+calico_datagram_decrypt: 10 bytes in 0.27152 usec on average / 36.8297 MBPS / 3.68297e+06 per second
+calico_datagram_decrypt: 1 bytes in 0.25803 usec on average / 3.87552 MBPS / 3.87552e+06 per second
 +++ Test passed.
 ~~~
 
@@ -188,6 +188,10 @@ The IV is truncated to its 3 low bytes (24 bits) and is obfuscated to make the o
 look more random.  The obfuscation used is to first subtract off the MAC tag from it, and
 then XOR the 24-bit value 0x286AD7.
 
+The IV must be included in the MAC tag, or else it would be trivially possible to replay
+an encrypted message for a previous IV.  To efficiently incorporate the IV, it is XOR'd
+into the low 8 bytes of the MAC key.  The resulting combined key is then used as usual.
+
 #### Decryption
 
 Message decryption and authentication is performed by `calico_datagram_decrypt`.
@@ -279,19 +283,19 @@ Long-message performance: Dropping a 1000-byte corrupted message on my laptop.
 
 + VMAC-ChaCha14 : 3179.04 MB/s
 + Poly1305-ChaCha14 : 1000 MB/s
-+ SipHash-2-4 : 966.137 MB/s
++ SipHash-2-4 : 962.677 MB/s
 
 Short-message performance: Dropping a 100-byte corrupted message on my laptop.
 
-+ SipHash-2-4 : 661.726 MB/s
++ SipHash-2-4 : 784.006 MB/s
 + VMAC-ChaCha14 : 514.483 MB/s
 + Poly1305-ChaCha14 : 327.729 MB/s
 
-VMAC is very fast for large data, but is not the best in speed for shorter data.
+VMAC is the fastest for long messages but is slower for medium and short messages.
 VMAC also has good security analysis and several implementations.  The downsides are
 that it requires several hundred bytes of extra memory per connection, and it is much
-more complicated than SipHash-2-4/Poly1305.  I was not willing to maintain my VMAC
-code and decided to go with the simpler SipHash-2-4/Poly1305 approach.
+more complicated than SipHash-2-4/Poly1305.  I was not willing to maintain my VMAC code
+and decided to go with the simpler SipHash-2-4/Poly1305 approach.
 
 While SipHash-2-4 is slightly slower for file transfer-sized packets, it is much much
 faster for all other types of data than Poly1305-ChaCha14.  And SipHash-2-4 is extremely

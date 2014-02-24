@@ -22,6 +22,8 @@ typedef void (*TestFunction)();
 void UninitializedTest() {
 	calico_state S;
 
+	CAT_OBJCLR(S);
+
 	char overhead[CALICO_DATAGRAM_OVERHEAD];
 	char data[10] = {0};
 	int bytes = (int)sizeof(data);

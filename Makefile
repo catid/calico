@@ -6,7 +6,7 @@
 #OPTFLAGS = -O3 -fomit-frame-pointer -funroll-loops
 CCPP = clang++ -m64
 CC = clang -m64
-OPTFLAGS = -O3 -DCAT_CHACHA_IMPL
+OPTFLAGS = -O4 -DCAT_CHACHA_IMPL
 DBGFLAGS = -g -O0 -DDEBUG -DCAT_CHACHA_IMPL
 CFLAGS = -Wall -fstrict-aliasing -I./libcat -I./include -I./chacha-opt \
 		 -Dchacha_blocks_impl=chacha_blocks_ssse3 -Dhchacha_impl=hchacha
