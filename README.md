@@ -240,9 +240,13 @@ up to 45 MB/s data rates, which did not seem to be future-proof enough for me.
 
 #### Encryption
 
-The cipher chosen for encryption is the ChaCha cipher, which has a selectable number of
-rounds.  The number of rounds is commonly post-fixed to the name of the cipher as in
-"ChaCha8" is an 8-round version of the ChaCha cipher.  ChaCha14 is the one used in Calico.
+To achieve low overhead, the ChaCha14 stream cipher was chosen for use in Calico.
+The choice of this stream cipher was motivated by the lack of padding for lower overhead
+and the speed of the ChaCha stream cipher.
+
+The stream cipher chosen for encryption is the ChaCha cipher, which has a selectable
+number of rounds.  The number of rounds is commonly post-fixed to the name of the cipher
+as in "ChaCha8" is an 8-round version of the ChaCha cipher.
 
 To optimize the ChaCha function for servers and reduce the impact of using strong
 cryptography, the [chacha-opt](https://github.com/floodyberry/chacha-opt) implementation
@@ -261,42 +265,48 @@ During decryption a 1024-bit window is used to keep track of accepted IVs.  This
 was chosen because it is the IPsec largest window allowed.  But it may be worth looking
 into expanding this window for high-speed transfers.
 
-#### SipHash versus Poly1305 versus VMAC
+#### SipHash-2-4 versus Poly1305 versus VMAC
 
-Dropping a 1000-byte corrupted message on my laptop:
+Choosing which MAC algorithm to use turned out to be one of the more difficult challenges
+of putting together Calico.  The metrics to measure performance of a MAC function
+(assuming similar security guarantees) are: Long-message performance, short-message
+performance, code simplicity, and size of the per-connection state object in memory.
+
+Long-message performance: Dropping a 1000-byte corrupted message on my laptop.
 
 + VMAC-ChaCha14 : 3179.04 MB/s
 + Poly1305-ChaCha14 : 1000 MB/s
-+ SipHash-2-4 = 966.137 MB/s
++ SipHash-2-4 : 966.137 MB/s
 
-Dropping a 100-byte corrupted message on my laptop:
+Short-message performance: Dropping a 100-byte corrupted message on my laptop.
 
-+ SipHash-2-4 = 661.726 MB/s
++ SipHash-2-4 : 661.726 MB/s
 + VMAC-ChaCha14 : 514.483 MB/s
 + Poly1305-ChaCha14 : 327.729 MB/s
 
-VMAC is very fast for large data, but is not competitive in speed for shorter data.
+VMAC is very fast for large data, but is not the best in speed for shorter data.
 VMAC also has good security analysis and several implementations.  The downsides are
 that it requires several hundred bytes of extra memory per connection, and it is much
 more complicated than SipHash-2-4/Poly1305.  I was not willing to maintain my VMAC
 code and decided to go with the simpler SipHash-2-4/Poly1305 approach.
 
 While SipHash-2-4 is slightly slower for file transfer-sized packets, it is much much
-faster for all other types of data.  And SipHash-2-4 is extremely simple in code,
-making it easy to audit.
+faster for all other types of data than Poly1305-ChaCha14.  And SipHash-2-4 is extremely
+simple in code, making it easier to audit than Poly1305.
 
 Poly1305-ChaCha14 requires less state per user in that it consumes the first block of
 ChaCha during encryption rather than depending on a 128-bit key like SipHash.  However
 this requires an extra execution of the ChaCha function, which slows down Poly1305,
 leading to slower short-message performance.
 
-In the end, SipHash-2-4 turned out to be the best option in my estimation.
+After weighing all three options over several months, SipHash-2-4 was selected as the
+MAC for Calico.
 
 
 ## References
 
 ##### [1] ["New Features of Latin Dances: Analysis of Salsa, ChaCha, and Rumba" (Aumasson et al 2008)](https://eprint.iacr.org/2007/472.pdf)
-Cryptoanalysis of the ChaCha cipher used in Calico.
+Cryptoanalysis of the ChaCha stream cipher used in Calico.
 
 ##### [2] ["Latin Dances Revisited: New Analytic Results of Salsa20 and ChaCha" (Ishiguro 2012)](https://eprint.iacr.org/2012/065.pdf)
 Updated analysis of ChaCha security.
@@ -306,6 +316,9 @@ A proof for security against differential cryptoanalysis is given for ChaCha-15.
 
 ##### [4] ["ChaCha20 and Poly1305 based Cipher Suites for TLS" (Langley 2013)](https://tools.ietf.org/html/draft-agl-tls-chacha20poly1305-01)
 The accepted IETF proposal for incorporating ChaCha and Poly1305 for TLS.
+
+##### [5] ["SipHash: a fast short-input PRF" (Aumasson Bernstein 2013)](https://131002.net/siphash/)
+Cryptoanalysis of the SipHash-2-4 MAC used in Calico.
 
 
 ## Credits
