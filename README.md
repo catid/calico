@@ -120,6 +120,7 @@ src/*
 libcat/BitMath.*
 libcat/EndianNeutral.*
 libcat/SecureErase.*
+libcat/SipHash.*
 
 libcat/Platform.hpp
 libcat/Config.hpp
