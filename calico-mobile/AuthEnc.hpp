@@ -26,31 +26,29 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef CAT_CHACHA_VMAC_HPP
-#define CAT_CHACHA_VMAC_HPP
+#ifndef CAT_AUTH_ENC_HPP
+#define CAT_AUTH_ENC_HPP
 
 #include "Platform.hpp"
-#include "VHash.hpp"
 
 namespace cat {
 
 
 typedef struct {
-	vhash_state hash_state;
 	char datagram_key[32];
 	char stream_key[32];
-} chacha_vmac_state;
+} auth_enc_state;
 
-bool chacha_key_expand(const char key[32], void *buffer, int bytes);
+bool auth_key_expand(const char key[32], void *buffer, int bytes);
 
-// Returns MAC
-u64 chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv, const void *from, void *to, int bytes);
+// Returns MAC tag
+u64 auth_encrypt(auth_enc_state *state, const char key[32], u64 iv, const void *from, void *to, int bytes);
 
-// Accepts MAC as parameter
-bool chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv, void *buffer, int bytes, u64 mac);
+// Accepts MAC tag as parameter
+bool auth_decrypt(auth_enc_state *state, const char key[32], u64 iv, void *buffer, int bytes, u64 mac_tag);
 
 
 } // namespace cat
 
-#endif // CAT_CHACHA_VMAC_HPP
+#endif // CAT_AUTH_ENC_HPP
 
