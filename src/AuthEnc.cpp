@@ -101,7 +101,7 @@ bool cat::auth_decrypt(auth_enc_state *state, const char key[32],
 	const u64 *tag_word = reinterpret_cast<const u64 *>( tag );
 	const u64 expected_tag = tag_word[0];
 
-	// Verify MAC tag
+	// Verify MAC tag in constant-time
 	const u64 delta = expected_tag ^ provided_tag;
 	const u32 z = (u32)(delta >> 32) | (u32)delta;
 	if (z) {

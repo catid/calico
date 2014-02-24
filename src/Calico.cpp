@@ -42,7 +42,7 @@ static const int IV_BYTES = 3;
 static const int IV_BITS = IV_BYTES * 8;
 static const u32 IV_MSB = (1 << IV_BITS);
 static const u32 IV_MASK = (IV_MSB - 1);
-static const u32 IV_FUZZ = 0x9F286AD7;
+static const u32 IV_FUZZ = 0x286AD7;
 
 typedef struct {
 	u32 flag;
