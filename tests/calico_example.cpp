@@ -37,7 +37,6 @@ int main()
 
 	// Store overhead right after the message data
 	char *overhead = packet + message_length;
-	int overhead_len = CALICO_DATAGRAM_OVERHEAD;
 
 	assert(message_length + CALICO_DATAGRAM_OVERHEAD < sizeof(packet));
 

@@ -25,6 +25,7 @@ libcat_o = BitMath.o EndianNeutral.o SecureErase.o
 calico_o = AntiReplayWindow.o Calico.o AuthEnc.o SipHash.o $(libcat_o) $(extern_o)
 
 calico_test_o = calico_test.o $(shared_test_o) SecureEqual.o
+siphash_test_o = siphash_test.o $(shared_test_o)
 calico_example_o = calico_example.o
 
 
@@ -63,6 +64,11 @@ test-mobile : CFLAGS += -DUNIT_TEST $(OPTFLAGS)
 test-mobile : clean $(calico_test_o)
 	$(CCPP) $(calico_test_o) -L./calico-mobile -lcalico -o test
 	./test
+
+mactest : CFLAGS += -DUNIT_TEST $(OPTFLAGS)
+mactest : clean $(siphash_test_o) library
+	$(CCPP) $(siphash_test_o) $(LIBS) -o mactest
+	./mactest
 
 
 # Shared objects
@@ -111,6 +117,9 @@ calico_test.o : tests/calico_test.cpp
 
 calico_example.o : tests/calico_example.cpp
 	$(CCPP) $(CFLAGS) -c tests/calico_example.cpp
+
+siphash_test.o : tests/siphash_test.cpp
+	$(CCPP) $(CFLAGS) -c tests/siphash_test.cpp
 
 
 # Cleanup
