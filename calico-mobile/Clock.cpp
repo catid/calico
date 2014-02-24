@@ -216,11 +216,11 @@ u32 Clock::cycles(bool sync)
 	if (sync) {
 		CAT_ASM_BEGIN_VOLATILE
 			"cpuid\n\t"
-			"rdtsc" : "=a"(x[0]), "=d"(x[1]) : : "eax", "edx", "ebx", "ecx"
+			"rdtsc" : "=a"(x[0]), "=d"(x[1]) : : "ebx", "ecx"
 		CAT_ASM_END
 	} else {
 		CAT_ASM_BEGIN_VOLATILE
-			"rdtsc" : "=a"(x[0]), "=d"(x[1]) : : "eax", "edx", "ebx", "ecx"
+			"rdtsc" : "=a"(x[0]), "=d"(x[1]) : : "ebx", "ecx"
 		CAT_ASM_END
 	}
 
