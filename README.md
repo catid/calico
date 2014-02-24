@@ -17,7 +17,7 @@ normal decryption.
 Calico implements Authenticated Encryption with Associated Data (AEAD) using
 a similar construction Langley's proposal for using ChaCha20 with Poly1305 for
 TLS [4].  The main difference is that the simpler SipHash-2-4 MAC is used
-for higher speed and lower code complexity.
+for higher speed.
 
 Calico does not provide key agreement.  See the [Tabby](https://github.com/catid/tabby)
 library for an efficient and portable implementation of key agreement.  Calico
@@ -263,10 +263,34 @@ into expanding this window for high-speed transfers.
 
 #### SipHash versus Poly1305 versus VMAC
 
-The fastest MAC available right now is VMAC, which is almost twice as fast as a naive
-implementation of SipHash-2-4 without SIMD optimizations.  However, VMAC requires a lot
-of extra memory per connection and it is much more complicated.  I was not willing to
-maintain my VMAC code and decided to go with the simpler albiet slower SipHash approach.
+Dropping a 1000-byte corrupted message on my laptop:
+
++ VMAC-ChaCha14 : 3179.04 MB/s
++ Poly1305-ChaCha14 : 1000 MB/s
++ SipHash-2-4 = 966.137 MB/s
+
+Dropping a 100-byte corrupted message on my laptop:
+
++ SipHash-2-4 = 661.726 MB/s
++ VMAC-ChaCha14 : 514.483 MB/s
++ Poly1305-ChaCha14 : 327.729 MB/s
+
+VMAC is very fast for large data, but is not competitive in speed for shorter data.
+VMAC also has good security analysis and several implementations.  The downsides are
+that it requires several hundred bytes of extra memory per connection, and it is much
+more complicated than SipHash-2-4/Poly1305.  I was not willing to maintain my VMAC
+code and decided to go with the simpler SipHash-2-4/Poly1305 approach.
+
+While SipHash-2-4 is slightly slower for file transfer-sized packets, it is much much
+faster for all other types of data.  And SipHash-2-4 is extremely simple in code,
+making it easy to audit.
+
+Poly1305-ChaCha14 requires less state per user in that it consumes the first block of
+ChaCha during encryption rather than depending on a 128-bit key like SipHash.  However
+this requires an extra execution of the ChaCha function, which slows down Poly1305,
+leading to slower short-message performance.
+
+In the end, SipHash-2-4 turned out to be the best option in my estimation.
 
 
 ## References
