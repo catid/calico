@@ -184,6 +184,8 @@ the message with ChaCha14 and the local datagram key.  A SipHash-2-4 MAC tag is 
 for the encrypted ciphertext of the message.  The IV and tag are stored in the overhead
 for the message.  Then the message and its overhead are transmitted to the remote user.
 
+Each IV starts at 0 and is incremented by 1 for each message that is sent using that IV.
+
 The IV is truncated to its 3 low bytes (24 bits) and is obfuscated to make the overhead
 look more random.  The obfuscation used is to first subtract off the MAC tag from it, and
 then XOR the 24-bit value 0x286AD7.
