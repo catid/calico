@@ -27,6 +27,7 @@
 */
 
 #include "AuthEnc.hpp"
+#include "Poly1305.hpp"
 #include "EndianNeutral.hpp"
 using namespace cat;
 
@@ -78,7 +79,7 @@ u64 cat::auth_encrypt(auth_enc_state *state, const char key[32],
 	return tag_word[0];
 }
 
-bool cat::auth_decrypt(chacha_vmac_state *state, const char key[32],
+bool cat::auth_decrypt(auth_enc_state *state, const char key[32],
 					   u64 iv_counter, void *buffer, int bytes, u64 provided_tag)
 {
 	const u64 iv = getLE64(iv_counter);
@@ -94,7 +95,7 @@ bool cat::auth_decrypt(chacha_vmac_state *state, const char key[32],
 
 	// Generate expected MAC tag
 	char tag[16];
-	poly1305_mac(mac_key, iv, to, bytes, tag);
+	poly1305_mac(mac_key, iv, buffer, bytes, tag);
 
 	// Grab the low 8 bytes as the expected tag
 	const u64 *tag_word = reinterpret_cast<const u64 *>( tag );

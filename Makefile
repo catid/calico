@@ -22,7 +22,7 @@ extern_o = chacha.o chacha_blocks_ssse3-64.o
 
 libcat_o = BitMath.o EndianNeutral.o SecureErase.o
 
-calico_o = AntiReplayWindow.o Calico.o ChaChaVMAC.o VHash.o $(libcat_o) $(extern_o)
+calico_o = AntiReplayWindow.o Calico.o AuthEnc.o Poly1305.o $(libcat_o) $(extern_o)
 
 calico_test_o = calico_test.o $(shared_test_o) SecureEqual.o
 calico_example_o = calico_example.o
@@ -91,11 +91,11 @@ AntiReplayWindow.o : src/AntiReplayWindow.cpp
 Calico.o : src/Calico.cpp
 	$(CCPP) $(CFLAGS) -c src/Calico.cpp
 
-ChaChaVMAC.o : src/ChaChaVMAC.cpp
-	$(CCPP) $(CFLAGS) -c src/ChaChaVMAC.cpp
+AuthEnc.o : src/AuthEnc.cpp
+	$(CCPP) $(CFLAGS) -c src/AuthEnc.cpp
 
-VHash.o : src/VHash.cpp
-	$(CCPP) $(CFLAGS) -c src/VHash.cpp
+Poly1305.o : src/Poly1305.cpp
+	$(CCPP) $(CFLAGS) -c src/Poly1305.cpp
 
 chacha.o : chacha-opt/chacha.c
 	$(CC) $(CFLAGS) -std=c99 -c chacha-opt/chacha.c
