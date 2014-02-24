@@ -28,7 +28,7 @@
 
 #include "calico.h"
 
-#include "ChaChaVMAC.hpp"
+#include "AuthEnc.hpp"
 #include "AntiReplayWindow.hpp"
 #include "EndianNeutral.hpp"
 #include "SecureErase.hpp"

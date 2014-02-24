@@ -26,7 +26,7 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "ChaChaVMAC.hpp"
+#include "AuthEnc.hpp"
 #include "EndianNeutral.hpp"
 using namespace cat;
 

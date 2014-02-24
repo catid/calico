@@ -26,31 +26,22 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef CAT_CHACHA_VMAC_HPP
-#define CAT_CHACHA_VMAC_HPP
+#ifndef CAT_POLY1305_HPP
+#define CAT_POLY1305_HPP
 
 #include "Platform.hpp"
-#include "VHash.hpp"
 
 namespace cat {
 
 
-typedef struct {
-	vhash_state hash_state;
-	char datagram_key[32];
-	char stream_key[32];
-} chacha_vmac_state;
-
-bool chacha_key_expand(const char key[32], void *buffer, int bytes);
-
-// Returns MAC
-u64 chacha_encrypt(chacha_vmac_state *state, const char key[32], u64 iv, const void *from, void *to, int bytes);
-
-// Accepts MAC as parameter
-bool chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv, void *buffer, int bytes, u64 mac);
+/*
+ * This is the Poly1305 Wegman-Carter hash function.  It becomes a MAC when
+ * the result is encrypted.
+ */
+void poly1305_mac(const char key[32], const u64 iv, const void *data, int bytes, char tag[16]);
 
 
 } // namespace cat
 
-#endif // CAT_CHACHA_VMAC_HPP
+#endif // CAT_POLY1305_HPP
 
