@@ -15,7 +15,7 @@ rejects invalid messages as quickly as possible -- roughly 2x faster than
 normal decryption.
 
 Calico implements Authenticated Encryption with Associated Data (AEAD) using
-a similar construction Langley's proposal [4] for using ChaCha20 [1] with Poly1305
+a similar construction Langley's proposal [4] for using ChaCha20 with Poly1305
 for AEAD in TLS.  The main difference is that the simpler SipHash-2-4 MAC [5] is
 used for higher speed in place of Poly1305.
 
@@ -81,7 +81,7 @@ For more thorough usage, check out the [unit tester code](https://github.com/cat
 The [calico-mobile](https://github.com/catid/calico/tree/master/calico-mobile)
 directory contains an easy-to-import set to C code that
 also builds properly for mobile devices.  In a pinch you can use this code for
-desktops, although it will tend to run about 2.5x slower.
+desktops, although it will tend to run about 2x slower.
 
 
 #### Building: Mac
@@ -231,8 +231,9 @@ though I haven't checked.
 
 An alternative initial state would be a random number for each IV.  This would
 not help meaningfully with security because the keys are already large enough.
-The advantage of starting with 0 is that it will never roll over and the code
-can easily check for IVs that are about to reach 2^64 to avoid re-using IVs.
+An older version of the software used this approach.  The advantage of starting
+with 0 is that it will never roll over and the code can easily check for IVs that
+are about to reach 2^64 to avoid re-using IVs.
 
 The IVs are truncated during encryption to 24 bits, which is tuned for expected
 file transfer data rates up to 10 GB/s.  Truncating to 16 bits would allow for
@@ -250,11 +251,12 @@ as in "ChaCha8" is an 8-round version of the ChaCha cipher.
 
 To optimize the ChaCha function for servers and reduce the impact of using strong
 cryptography, the [chacha-opt](https://github.com/floodyberry/chacha-opt) implementation
-is employed when running on Intel x64 machines.  ChaCha-14 has similar performance to the
+is employed when running on Intel x64 machines.  ChaCha14 has similar performance to the
 AES-NI instruction, while being much faster in software for mobile platforms.
 
-In [1] and [2], it is shown that ChaCha8 does not provide 256-bit security.  And in [3] a
-proof for security against differential cryptoanalysis is given for ChaCha15.
+To aid in deciding the number of rounds to use:  In [1] and [2], it is shown that
+ChaCha8 does not provide 256-bit security.  And in [3] a proof for security against
+differential cryptoanalysis is given for ChaCha15.
 
 It seems then that a comfortable margin of security is provided by ChaCha14, which offers
 30% faster execution time as compared to the full 20-round version.
@@ -263,7 +265,7 @@ It seems then that a comfortable margin of security is provided by ChaCha14, whi
 
 During decryption a 1024-bit window is used to keep track of accepted IVs.  This value
 was chosen because it is the IPsec largest window allowed.  But it may be worth looking
-into expanding this window for high-speed transfers.
+into expanding this window for high-speed transfers in the future.
 
 #### SipHash-2-4 versus Poly1305 versus VMAC
 
