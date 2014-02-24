@@ -15,9 +15,9 @@ rejects invalid messages as quickly as possible -- roughly 2x faster than
 normal decryption.
 
 Calico implements Authenticated Encryption with Associated Data (AEAD) using
-a similar construction Langley's proposal for using ChaCha20 with Poly1305 for
-TLS [4].  The main difference is that the simpler SipHash-2-4 MAC is used
-for higher speed.
+a similar construction Langley's proposal [4] for using ChaCha20 [1] with Poly1305
+for AEAD in TLS.  The main difference is that the simpler SipHash-2-4 MAC [5] is
+used for higher speed in place of Poly1305.
 
 Calico does not provide key agreement.  See the [Tabby](https://github.com/catid/tabby)
 library for an efficient and portable implementation of key agreement.  Calico
@@ -32,32 +32,32 @@ Calico does not consume any randomness to operate.
 Output of `make test`:
 
 ~~~
-Running test 6 : Benchmark Initialize()
-Benchmark: Initialize() in 0.61753 usec on average / 1.61935e+06 per second
+Running test 5 : Benchmark Initialize()
+Benchmark: Initialize() in 0.46532 usec on average / 2.14906e+06 per second
 +++ Test passed.
 
-Running test 7 : Benchmark Encrypt()
-Benchmark: Encrypt() 10000 bytes in 9.35767 usec on average / 1068.64 MBPS / 106864 per second
-Benchmark: Encrypt() 1000 bytes in 1.24738 usec on average / 801.68 MBPS / 801680 per second
-Benchmark: Encrypt() 100 bytes in 0.35006 usec on average / 285.665 MBPS / 2.85665e+06 per second
-Benchmark: Encrypt() 10 bytes in 0.20681 usec on average / 48.3536 MBPS / 4.83536e+06 per second
-Benchmark: Encrypt() 1 bytes in 0.17159 usec on average / 5.82785 MBPS / 5.82785e+06 per second
+Running test 6 : Benchmark Encrypt()
+calico_datagram_encrypt: 10000 bytes in 17.7296 usec on average / 564.028 MBPS / 56402.8 per second
+calico_datagram_encrypt: 1000 bytes in 2.08452 usec on average / 479.727 MBPS / 479727 per second
+calico_datagram_encrypt: 100 bytes in 0.41736 usec on average / 239.601 MBPS / 2.39601e+06 per second
+calico_datagram_encrypt: 10 bytes in 0.16808 usec on average / 59.4955 MBPS / 5.94955e+06 per second
+calico_datagram_encrypt: 1 bytes in 0.14167 usec on average / 7.05866 MBPS / 7.05866e+06 per second
 +++ Test passed.
 
-Running test 8 : Benchmark Decrypt() Rejection
-Benchmark: Decrypt() drops 10000 corrupted bytes in 1.77144 usec on average / 5645.12 MBPS / 564512 per second
-Benchmark: Decrypt() drops 1000 corrupted bytes in 0.31456 usec on average / 3179.04 MBPS / 3.17904e+06 per second
-Benchmark: Decrypt() drops 100 corrupted bytes in 0.19437 usec on average / 514.483 MBPS / 5.14483e+06 per second
-Benchmark: Decrypt() drops 10 corrupted bytes in 0.19448 usec on average / 51.4192 MBPS / 5.14192e+06 per second
-Benchmark: Decrypt() drops 1 corrupted bytes in 0.17031 usec on average / 5.87165 MBPS / 5.87165e+06 per second
+Running test 7 : Benchmark Decrypt() Rejection
+calico_datagram_decrypt: drops 10000 corrupted bytes in 10.1621 usec on average / 984.045 MBPS / 98404.5 per second
+calico_datagram_decrypt: drops 1000 corrupted bytes in 1.01723 usec on average / 983.062 MBPS / 983062 per second
+calico_datagram_decrypt: drops 100 corrupted bytes in 0.1323 usec on average / 755.858 MBPS / 7.55858e+06 per second
+calico_datagram_decrypt: drops 10 corrupted bytes in 0.05153 usec on average / 194.062 MBPS / 1.94062e+07 per second
+calico_datagram_decrypt: drops 1 corrupted bytes in 0.04611 usec on average / 21.6873 MBPS / 2.16873e+07 per second
 +++ Test passed.
 
-Running test 9 : Benchmark Decrypt() Accept
-Benchmark: Decrypt() 10000 bytes in 9.4023 usec on average / 1063.57 MBPS / 106357 per second
-Benchmark: Decrypt() 1000 bytes in 1.35572 usec on average / 737.615 MBPS / 737615 per second
-Benchmark: Decrypt() 100 bytes in 0.44144 usec on average / 226.531 MBPS / 2.26531e+06 per second
-Benchmark: Decrypt() 10 bytes in 0.26523 usec on average / 37.7031 MBPS / 3.77031e+06 per second
-Benchmark: Decrypt() 1 bytes in 0.28565 usec on average / 3.50079 MBPS / 3.50079e+06 per second
+Running test 8 : Benchmark Decrypt() Accept
+calico_datagram_decrypt: 10000 bytes in 18.0886 usec on average / 552.835 MBPS / 55283.5 per second
+calico_datagram_decrypt: 1000 bytes in 2.30292 usec on average / 434.231 MBPS / 434231 per second
+calico_datagram_decrypt: 100 bytes in 0.48768 usec on average / 205.052 MBPS / 2.05052e+06 per second
+calico_datagram_decrypt: 10 bytes in 0.2632 usec on average / 37.9939 MBPS / 3.79939e+06 per second
+calico_datagram_decrypt: 1 bytes in 0.24126 usec on average / 4.14491 MBPS / 4.14491e+06 per second
 +++ Test passed.
 ~~~
 
