@@ -15,7 +15,7 @@ LIBNAME = libcalico.a
 # Object files
 
 library_o = chacha.o chacha_blocks_ref.o Clock.o BitMath.o EndianNeutral.o \
-			SecureErase.o AntiReplayWindow.o Calico.o AuthEnc.o Poly1305.o
+			SecureErase.o AntiReplayWindow.o Calico.o AuthEnc.o SipHash.o
 
 
 # Release target (default)
@@ -51,6 +51,9 @@ EndianNeutral.o : EndianNeutral.cpp
 BitMath.o : BitMath.cpp
 	$(CCPP) $(CFLAGS) -c BitMath.cpp
 
+SipHash.o : SipHash.cpp
+	$(CCPP) $(CFLAGS) -c SipHash.cpp
+
 
 # ChaCha objects
 
@@ -71,9 +74,6 @@ Calico.o : Calico.cpp
 
 AuthEnc.o : AuthEnc.cpp
 	$(CCPP) $(CFLAGS) -c AuthEnc.cpp
-
-Poly1305.o : Poly1305.cpp
-	$(CCPP) $(CFLAGS) -c Poly1305.cpp
 
 
 # Cleanup
