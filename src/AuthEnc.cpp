@@ -39,7 +39,7 @@ using namespace cat;
 // Using the internal chacha_blocks() function to speed up invalid message rejection
 extern "C" void chacha_blocks_impl(chacha_state_t *state, const uint8_t *in, uint8_t *out, size_t bytes);
 
-bool cat::chacha_key_expand(const char key[32], void *buffer, int bytes)
+bool cat::auth_key_expand(const char key[32], void *buffer, int bytes)
 {
 	if (bytes % 64) {
 		return false;
@@ -52,130 +52,63 @@ bool cat::chacha_key_expand(const char key[32], void *buffer, int bytes)
 	return true;
 }
 
-u64 cat::chacha_encrypt(chacha_vmac_state *state, const char key[32],
-		u64 iv_counter, const void *from, void *to, int bytes)
+u64 cat::auth_encrypt(auth_enc_state *state, const char key[32],
+					  u64 iv_counter, const void *from, void *to, int bytes)
 {
 	const u64 iv = getLE64(iv_counter);
 
+	// Setup the cipher with the key and IV
 	chacha_state S;
 	chacha_init(&S, (const chacha_key *)key, (const chacha_iv *)&iv, 14);
 
-	u8 x[64];
-	const u32 *keys32 = reinterpret_cast<const u32 *>( x );
-	chacha_blocks_impl(&S, 0, x, 64);
+	// Generate MAC key
+	// Take first block of ChaCha and discard the high 32 bytes
+	char mac_key[32];
+	chacha_blocks_impl(&S, 0, (u8 *)mac_key, sizeof(mac_key));
 
-	// Store the last two keystream words for encrypting the MAC later
-	const u64 *mac_key_ptr = reinterpret_cast<const u64 *>( keys32 + 14 );
-	u64 mac_keystream = getLE(*mac_key_ptr);
+	// Encrypt data
+	chacha_blocks_impl(&S, (const u8 *)from, (u8 *)to, bytes);
 
-	// Encrypt the data:
+	// Generate MAC tag
+	char tag[16];
+	poly1305_mac(mac_key, iv, to, bytes, tag);
 
-	const u32 *from32 = reinterpret_cast<const u32 *>( from );
-	u32 *to32 = reinterpret_cast<u32 *>( to );
-	int left = bytes;
-
-	// If we have enough keystream to cover the whole buffer,
-	if (left > 56) {
-		// Encrypt using the full remainder of keystream
-		for (int ii = 0; ii < 14; ++ii) {
-			to32[ii] = from32[ii] ^ keys32[ii];
-		}
-
-		// Increment data pointer
-		from32 += 14;
-		to32 += 14;
-		left -= 56;
-
-		chacha_blocks_impl(&S, (const u8 *)from32, (u8 *)to32, left);
-	} else {
-		int words = left / 4;
-
-		for (int ii = 0; ii < words; ++ii) {
-			to32[ii] = from32[ii] ^ keys32[ii];
-		}
-
-		// Handle final <4 bytes
-		int remainder = left % 4;
-		if (remainder > 0) {
-			const u8 *keys8 = reinterpret_cast<const u8 *>( keys32 + words );
-			const u8 *from8 = reinterpret_cast<const u8 *>( from32 + words );
-			u8 *to8 = reinterpret_cast<u8 *>( to32 + words );
-
-			switch (remainder) {
-			case 3: to8[2] = from8[2] ^ keys8[2];
-			case 2: to8[1] = from8[1] ^ keys8[1];
-			case 1: to8[0] = from8[0] ^ keys8[0];
-			}
-		}
-	}
-
-	// Return the MAC in endian-specific byte order
-	return vhash(&state->hash_state, to, bytes) ^ mac_keystream;
+	// Return low 8 bytes for the tag, endian-specific
+	const u64 *tag_word = reinterpret_cast<const u64 *>( tag );
+	return tag_word[0];
 }
 
-bool cat::chacha_decrypt(chacha_vmac_state *state, const char key[32], u64 iv_counter, void *buffer, int bytes, u64 mac)
+bool cat::auth_decrypt(chacha_vmac_state *state, const char key[32],
+					   u64 iv_counter, void *buffer, int bytes, u64 provided_tag)
 {
 	const u64 iv = getLE64(iv_counter);
 
+	// Setup the cipher with the key and IV
 	chacha_state S;
 	chacha_init(&S, (const chacha_key *)key, (const chacha_iv *)&iv, 14);
 
-	u8 x[64];
-	const u32 *keys32 = reinterpret_cast<const u32 *>( x );
-	chacha_blocks_impl(&S, 0, x, 64);
+	// Generate MAC key
+	// Take first block of ChaCha and discard the high 32 bytes
+	char mac_key[32];
+	chacha_blocks_impl(&S, 0, (u8 *)mac_key, sizeof(mac_key));
 
-	// Store the last two keystream words for decrypting the MAC
-	const u64 *mac_key_ptr = reinterpret_cast<const u64 *>( keys32 + 14 );
-	u64 mac_keystream = getLE(*mac_key_ptr);
+	// Generate expected MAC tag
+	char tag[16];
+	poly1305_mac(mac_key, iv, to, bytes, tag);
 
-	// Recover and verify MAC:
-	{
-		// Hash the encrypted buffer
-		u64 delta = mac_keystream ^ vhash(&state->hash_state, buffer, bytes) ^ mac;
-		u32 z = (u32)(delta >> 32) | (u32)delta;
+	// Grab the low 8 bytes as the expected tag
+	const u64 *tag_word = reinterpret_cast<const u64 *>( tag );
+	const u64 expected_tag = tag_word[0];
 
-		if (z != 0) {
-			return false;
-		}
+	// Verify MAC tag
+	const u64 delta = expected_tag ^ provided_tag;
+	const u32 z = (u32)(delta >> 32) | (u32)delta;
+	if (z) {
+		return false;
 	}
 
-	// Decrypt the data:
-
-	u32 *text = reinterpret_cast<u32 *>( buffer );
-	int left = bytes;
-
-	// If we have enough keystream to cover the whole buffer,
-	if (left > 56) {
-		// Decrypt using the full remainder of keystream
-		for (int ii = 0; ii < 14; ++ii) {
-			text[ii] ^= keys32[ii];
-		}
-
-		// Increment data pointer
-		text += 14;
-		left -= 56;
-
-		chacha_blocks_impl(&S, (const u8 *)text, (u8 *)text, left);
-	} else {
-		int words = left / 4;
-
-		for (int ii = 0; ii < words; ++ii) {
-			text[ii] ^= keys32[ii];
-		}
-
-		// Handle final <4 bytes
-		int remainder = left % 4;
-		if (remainder > 0) {
-			const u8 *keys8 = reinterpret_cast<const u8 *>( keys32 + words );
-			u8 *text8 = reinterpret_cast<u8 *>( text + words );
-
-			switch (remainder) {
-			case 3: text8[2] ^= keys8[2];
-			case 2: text8[1] ^= keys8[1];
-			case 1: text8[0] ^= keys8[0];
-			}
-		}
-	}
+	// Decrypt data
+	chacha_blocks_impl(&S, (const u8 *)buffer, (u8 *)buffer, bytes);
 
 	return true;
 }

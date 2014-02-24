@@ -29,14 +29,16 @@
 #include "AntiReplayWindow.hpp"
 using namespace cat;
 
-void cat::antireplay_init(antireplay_state *S) {
+void cat::antireplay_init(antireplay_state *S)
+{
 	S->datagram_local = 0;
 	S->datagram_remote = 0;
 
 	CAT_OBJCLR(S->bitmap);
 }
 
-bool cat::antireplay_check(antireplay_state *S, u64 remote_iv) {
+bool cat::antireplay_check(antireplay_state *S, u64 remote_iv)
+{
 	// Check how far in the past this IV is
 	int delta = (int)(S->datagram_remote - remote_iv);
 
@@ -54,7 +56,8 @@ bool cat::antireplay_check(antireplay_state *S, u64 remote_iv) {
 	return true;
 }
 
-void cat::antireplay_accept(antireplay_state *S, u64 remote_iv) {
+void cat::antireplay_accept(antireplay_state *S, u64 remote_iv)
+{
 	// Check how far in the past/future this IV is
 	int delta = (int)(remote_iv - S->datagram_remote);
 	u64 *bitmap = S->bitmap;

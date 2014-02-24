@@ -32,7 +32,8 @@ using namespace cat;
 
 #define POLY1305_BLOCK_SIZE 16
 
-static void poly1305_block(u64 m0, u64 m1, const u64 s1, const u64 s2, u64 h[3], u64 d[3])
+static void poly1305_block(u64 m0, u64 m1, const u64 s1,
+						   const u64 s2, u64 h[3], u64 d[3])
 {
 	static const u64 MSB = (u64)1 << 40; // = 2^128 in this field
 
@@ -64,7 +65,8 @@ static void poly1305_block(u64 m0, u64 m1, const u64 s1, const u64 s2, u64 h[3],
 	h[1] += c;
 }
 
-void poly1305_mac(const char key[32], const u64 iv, const void *data, int bytes, char tag[16])
+void poly1305_mac(const char key[32], const u64 iv,
+				  const void *data, int bytes, char tag[16])
 {
 	const u64 *keys = reinterpret_cast<const u64 *>( key );
 
