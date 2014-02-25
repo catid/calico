@@ -34,18 +34,13 @@
 namespace cat {
 
 
-typedef struct {
-	char datagram_key[48];
-	char stream_key[48];
-} auth_enc_state;
-
 bool auth_key_expand(const char key[32], void *buffer, int bytes);
 
 // Returns MAC tag
-u64 auth_encrypt(auth_enc_state *state, const char key[48], u64 iv, const void *from, void *to, int bytes);
+u64 auth_encrypt(const char key[48], u64 iv, const void *from, void *to, int bytes);
 
 // Accepts MAC tag as parameter
-bool auth_decrypt(auth_enc_state *state, const char key[48], u64 iv, void *buffer, int bytes, u64 mac_tag);
+bool auth_decrypt(const char key[48], u64 iv, void *buffer, int bytes, u64 mac_tag);
 
 
 } // namespace cat

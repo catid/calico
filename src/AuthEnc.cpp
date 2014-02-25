@@ -53,10 +53,9 @@ bool cat::auth_key_expand(const char key[32], void *buffer, int bytes)
 	return true;
 }
 
-u64 cat::auth_encrypt(auth_enc_state *state, const char key[48],
-					  u64 iv_counter, const void *from, void *to, int bytes)
+u64 cat::auth_encrypt(const char key[48], u64 iv_raw, const void *from, void *to, int bytes)
 {
-	const u64 iv = getLE(iv_counter);
+	const u64 iv = getLE(iv_raw);
 
 	// Setup the cipher with the key and IV
 	chacha_state S;
@@ -69,10 +68,9 @@ u64 cat::auth_encrypt(auth_enc_state *state, const char key[48],
 	return siphash24(key + 32, to, bytes, iv);
 }
 
-bool cat::auth_decrypt(auth_enc_state *state, const char key[48],
-					   u64 iv_counter, void *buffer, int bytes, u64 provided_tag)
+bool cat::auth_decrypt(const char key[48], u64 iv_raw, void *buffer, int bytes, u64 provided_tag)
 {
-	const u64 iv = getLE(iv_counter);
+	const u64 iv = getLE(iv_raw);
 
 	// Setup the cipher with the key and IV
 	chacha_state S;

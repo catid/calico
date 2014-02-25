@@ -37,13 +37,6 @@ using namespace cat;
 
 #include <climits>
 
-// IV constants
-static const int IV_BYTES = 3;
-static const int IV_BITS = IV_BYTES * 8;
-static const u32 IV_MSB = (1 << IV_BITS);
-static const u32 IV_MASK = (IV_MSB - 1);
-static const u32 IV_FUZZ = 0x286AD7;
-
 /*
  * The user is responsible for how the Calico output is transported to a remote
  * host for decryption.  It is flexible in that the overhead can be stored in
@@ -58,12 +51,19 @@ static const u32 IV_FUZZ = 0x286AD7;
  *
  * AD (Associated Data) (3 bytes):
  *	R = Rekey ratchet flag bit (1 bit), stored in the high bit of byte 02.
- *	IV = Truncated IV (23 bits)
+ *	IV = Truncated IV (low 23 bits)
  * MAC (Message Authenticate Code) tag (8 bytes):
  * 	Tag that authenticates both the encrypted message and the associated data.
  */
 
 /*
+ * Both the initiator and the responder keep two copies of the remote keys.
+ * There are two encryption keys: ChaCha (256 bits) and MAC (128 bits).  To be
+ * clear, these are treated as one long 48 byte key and are updated together.
+ * The key corresponding to R = 0 is the initial encryption key for the remote
+ * host (Kr).  The key corresponding to R = 1 is H(Kr).
+ *
+ * The initiator and responder can each ratchet its encryption key.
  * The initiator will periodically request a ratchet of the private keys.  This
  * is done by flipping the R bit in the associated data of the message stored
  * in the overhead, as shown above.
@@ -75,12 +75,6 @@ static const u32 IV_FUZZ = 0x286AD7;
  * 2^128 hash operations to run the ratchet backwards, so the security of the
  * scheme is maintained: Previous outgoing messages can no longer be
  * decrypted if the responder is compromised, providing forward secrecy.
- *
- * Both the initiator and the responder keep two copies of the remote keys.
- * There are two encryption keys: ChaCha (256 bits) and MAC (128 bits).  To be
- * clear, these are treated as one long 48 byte key and are updated together.
- * The key corresponding to R = 0 is the initial encryption key for the remote
- * host (Kr).  The key corresponding to R = 1 is H(Kr).
  *
  * The initiator and responder both use the keys indicated by R when new
  * datagrams arrive to authenticate and decrypt.  When the remote host sends a
@@ -95,20 +89,60 @@ static const u32 IV_FUZZ = 0x286AD7;
  * TODO: Should both sides be responsible for triggering ratchets?
  */
 
+// IV constants
+static const int IV_BYTES = 3;
+static const int IV_BITS = IV_BYTES * 8;
+static const u32 IV_MSB = (1 << IV_BITS);
+static const u32 IV_MASK = (IV_MSB - 1);
+static const u32 IV_FUZZ = 0x286AD7;
+
 typedef struct {
+	// Encryption and MAC key for outgoing data
+	char outgoing[48];
+
+	// Current and next encryption keys for incoming data
+	char incoming[2][48];
+
+	// This is either 0 or 1 to indicate which of the two incoming
+	// keys is active
+	u32 active_incoming;
+
+	// This is the millisecond timestamp when ratcheting started
+	// Otherwise it is set to 0 when ratcheting is not in progress
+	u32 base_ratchet_time;
+} Keys;
+
+// Constants to indicate the Calico state object is keyed
+static const u32 FLAG_KEYED_STREAM = 0x6501ccef;
+static const u32 FLAG_KEYED_DATAGRAM = 0x6501ccfe;
+
+typedef struct {
+	// Flag indicating whether or not the Calico state object is keyed or not
 	u32 flag;
-	auth_enc_state local, remote;
-	u64 stream_local, stream_remote;
 
-	u32 ratchet_flag;
+	// Encryption and MAC keys for stream mode
+	Keys stream;
 
-	// Extended version for datagrams
+	// Next IV to use for outgoing stream messages
+	u64 stream_outgoing_iv;
+
+	// Next IV to expect for incoming stream messages
+	u64 stream_incoming_iv;
+
+	// Extended version for datagrams:
+
+	// Encryption and MAC keys for datagram mode
+	Keys datagram;
+
+	// Datagram next IV to send
+	u64 datagram_outgoing_iv;
+
+	// Anti-replay window for incoming datagram IVs
 	antireplay_state window;
 } calico_internal_state;
 
+// Flag to indicate that the library has been initialized with calico_init()
 static bool m_initialized = false;
-static const u32 FLAG_KEYED_STREAM = 0x6501ccef;
-static const u32 FLAG_KEYED_DATAGRAM = 0x6501ccfe;
 
 
 #ifdef __cplusplus
