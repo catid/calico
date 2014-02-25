@@ -76,10 +76,10 @@ using namespace cat;
  * When the responder sees an R bit flip, it will immediately ratchet its key
  * by running K' = H(K), where H = BLAKE2 and K = the local encryption key.
  * Any future outgoing encrypted messages will use the new key K'.  Note that
- * this erases the previous key K and replaces it with K'.  This costs over
+ * this erases the previous key K and replaces it with K'.  It then costs over
  * 2^128 hash operations to run the ratchet backwards, so the security of the
  * scheme is maintained: Previous outgoing messages can no longer be
- * decrypted if the responder is compromised, providing forward secrecy.
+ * decrypted if the keys are compromised, providing forward secrecy.
  *
  * The initiator and responder both use the keys indicated by R when new
  * datagrams arrive to authenticate and decrypt.  When the remote host sends a
@@ -88,10 +88,8 @@ using namespace cat;
  * seconds.  The timer is reset if a valid datagram for R is received.  This
  * prevents the ratchet from losing data when it arrives out of order.
  *
- * The client will ratchet no more often than 2X seconds, where X is roughly
- * 1 minute.
- *
- * TODO: Should both sides be responsible for triggering ratchets?
+ * The initiator will ratchet no more often than 2X seconds, where X is roughly
+ * 1 minute.  This prevents desynchronization.
  */
 
 // IV constants
