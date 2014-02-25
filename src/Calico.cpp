@@ -76,7 +76,23 @@ static const u32 IV_FUZZ = 0x286AD7;
  * scheme is maintained: Previous outgoing messages can no longer be
  * decrypted if the responder is compromised, providing forward secrecy.
  *
- * Both the 
+ * Both the initiator and the responder keep two copies of the remote keys.
+ * There are two encryption keys: ChaCha (256 bits) and MAC (128 bits).  To be
+ * clear, these are treated as one long 48 byte key and are updated together.
+ * The key corresponding to R = 0 is the initial encryption key for the remote
+ * host (Kr).  The key corresponding to R = 1 is H(Kr).
+ *
+ * The initiator and responder both use the keys indicated by R when new
+ * datagrams arrive to authenticate and decrypt.  When the remote host sends a
+ * valid datagram for ~R, then the receiver starts a timer counting down to
+ * updating the R key with K[R] = H(K[~R]).  The timer is initially set to X
+ * seconds.  The timer is reset if a valid datagram for R is received.  This
+ * prevents the ratchet from losing data when it arrives out of order.
+ *
+ * The client will ratchet no more often than 2X seconds, where X is roughly
+ * 1 minute.
+ *
+ * TODO: Should both sides be responsible for triggering ratchets?
  */
 
 typedef struct {
