@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define CALICO_VERSION 6
+#define CALICO_VERSION 7
 
 /*
  * Verify binary compatibility with the Calico API on startup.
@@ -89,6 +89,9 @@ enum CalicoOverhead {
  * messages.  Both datagram and stream mode may be used from the same object.
  * It is important to only call calico_key() once per key.  It is not necessary
  * to use two calico_state objects to transmit and receive data; one is enough.
+ *
+ * Calico will periodically rekey itself to provide forward secrecy without any
+ * interaction about once every 10 minutes.
  *
  * When finished with the Calico state object, call calico_cleanup().
  *

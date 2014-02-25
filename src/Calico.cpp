@@ -57,16 +57,21 @@ using namespace cat;
  */
 
 /*
- * Both the initiator and the responder keep two copies of the remote keys.
- * There are two encryption keys: ChaCha (256 bits) and MAC (128 bits).  To be
- * clear, these are treated as one long 48 byte key and are updated together.
- * The key corresponding to R = 0 is the initial encryption key for the remote
- * host (Kr).  The key corresponding to R = 1 is H(Kr).
+ * Calico supports periodic rekeying, initiated by the initiator.
+ * The advantage of this form of rekeying is to provide forward secrecy for
+ * long-lived connections, rather than to strengthen keys.
  *
- * The initiator and responder can each ratchet its encryption key.
- * The initiator will periodically request a ratchet of the private keys.  This
- * is done by flipping the R bit in the associated data of the message stored
- * in the overhead, as shown above.
+ * Both the initiator and the responder keep two copies of the remote keys.
+ * There are two keys: ChaCha (256 bits) and MAC (128 bits).  To be clear,
+ * these are treated as one long 48 byte key and are updated together.
+ * Initially the key corresponding to R = 0 is the initial encryption key for
+ * the remote host (Kr).  The key corresponding to R = 1 is H(Kr).
+ *
+ * The initiator and responder can each ratchet its own encryption key.
+ * This is done by flipping the R bit in the associated data of the message.
+ * It can immediately start sending data under the new key.
+ * When the responder sees a ratchet (R bit flipped) from the initiator, then
+ * it will immediately ratchet its own key.
  *
  * When the responder sees an R bit flip, it will immediately ratchet its key
  * by running K' = H(K), where H = BLAKE2 and K = the local encryption key.
@@ -96,7 +101,7 @@ static const u32 IV_MSB = (1 << IV_BITS);
 static const u32 IV_MASK = (IV_MSB - 1);
 static const u32 IV_FUZZ = 0x286AD7;
 
-typedef struct {
+struct Keys {
 	// Encryption and MAC key for outgoing data
 	char outgoing[48];
 
@@ -110,13 +115,13 @@ typedef struct {
 	// This is the millisecond timestamp when ratcheting started
 	// Otherwise it is set to 0 when ratcheting is not in progress
 	u32 base_ratchet_time;
-} Keys;
+};
 
 // Constants to indicate the Calico state object is keyed
 static const u32 FLAG_KEYED_STREAM = 0x6501ccef;
 static const u32 FLAG_KEYED_DATAGRAM = 0x6501ccfe;
 
-typedef struct {
+struct InternalState {
 	// Flag indicating whether or not the Calico state object is keyed or not
 	u32 flag;
 
@@ -139,7 +144,7 @@ typedef struct {
 
 	// Anti-replay window for incoming datagram IVs
 	antireplay_state window;
-} calico_internal_state;
+};
 
 // Flag to indicate that the library has been initialized with calico_init()
 static bool m_initialized = false;
@@ -157,10 +162,10 @@ int _calico_init(int expected_version)
 	}
 
 	// If internal state is larger than opaque object,
-	if (sizeof(calico_internal_state) > sizeof(calico_state)) {
+	if (sizeof(InternalState) > sizeof(calico_state)) {
 		return -1;
 	}
-	if (sizeof(calico_internal_state) - sizeof(antireplay_state) > sizeof(calico_stream_only)) {
+	if (sizeof(InternalState) - sizeof(antireplay_state) > sizeof(calico_stream_only)) {
 		return -1;
 	}
 
@@ -171,7 +176,7 @@ int _calico_init(int expected_version)
 
 int calico_key(calico_state *S, int role, const void *key, int key_bytes)
 {
-	calico_internal_state *state = (calico_internal_state *)S;
+	InternalState *state = reinterpret_cast<InternalState *>( S );
 
 	// If input is invalid,
 	if (!m_initialized || !key || !state || key_bytes != 32) {
@@ -223,7 +228,7 @@ int calico_key(calico_state *S, int role, const void *key, int key_bytes)
 int calico_key_stream_only(calico_stream_only *S, int role,
 						   const void *key, int key_bytes)
 {
-	calico_internal_state *state = (calico_internal_state *)S;
+	InternalState *state = reinterpret_cast<InternalState *>( S );
 
 	// If input is invalid,
 	if (!m_initialized || !key || !state || key_bytes != 32) {
@@ -271,7 +276,7 @@ int calico_key_stream_only(calico_stream_only *S, int role,
 int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plaintext,
 							int bytes, void *overhead)
 {
-	calico_internal_state *state = (calico_internal_state *)S;
+	InternalState *state = reinterpret_cast<InternalState *>( S );
 
 	// If input is invalid or Calico is not keyed,
 	if (!m_initialized || !state || !plaintext || !ciphertext ||
@@ -291,7 +296,7 @@ int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plain
 	state->window.datagram_local = iv + 1;
 
 	// Encrypt and generate MAC tag
-	const u64 tag = auth_encrypt(&state->local, state->local.datagram_key, iv, plaintext, ciphertext, bytes);
+	const u64 tag = auth_encrypt(state->local.datagram_key, iv, plaintext, ciphertext, bytes);
 
 	// Obfuscate the truncated IV
 	u32 trunc_iv = (u32)iv;
@@ -314,7 +319,7 @@ int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plain
 int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
 							const void *overhead)
 {
-	calico_internal_state *state = (calico_internal_state *)S;
+	InternalState *state = reinterpret_cast<InternalState *>( S );
 
 	// If input is invalid or Calico object is not keyed,
 	if (!m_initialized || !state || !ciphertext || !overhead ||
@@ -345,7 +350,7 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
 	}
 
 	// Decrypt and check MAC
-	if (!auth_decrypt(&state->remote, state->remote.datagram_key, iv, ciphertext, bytes, tag)) {
+	if (!auth_decrypt(state->remote.datagram_key, iv, ciphertext, bytes, tag)) {
 		return -1;
 	}
 
@@ -358,7 +363,7 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
 int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext,
 						  int bytes, void *overhead)
 {
-	calico_internal_state *state = (calico_internal_state *)S;
+	InternalState *state = reinterpret_cast<InternalState *>( S );
 
 	// If input is invalid or Calico is not keyed,
 	if (!m_initialized || !state || !plaintext || !ciphertext || bytes < 0 || !overhead ||
@@ -378,7 +383,7 @@ int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext,
 	state->stream_local = iv + 1;
 
 	// Encrypt and generate MAC tag
-	const u64 tag = auth_encrypt(&state->local, state->local.stream_key, iv, plaintext, ciphertext, bytes);
+	const u64 tag = auth_encrypt(state->local.stream_key, iv, plaintext, ciphertext, bytes);
 
 	u64 *overhead_tag = reinterpret_cast<u64 *>( overhead );
 
@@ -390,7 +395,7 @@ int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext,
 
 int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *overhead)
 {
-	calico_internal_state *state = (calico_internal_state *)S;
+	InternalState *state = reinterpret_cast<InternalState *>( S );
 
 	// If input is invalid or Calico object is not keyed,
 	if (!m_initialized || !state || !ciphertext || !overhead || bytes < 0 ||
@@ -406,7 +411,7 @@ int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *over
 	const u64 tag = getLE(*overhead_tag);
 
 	// Decrypt and check MAC
-	if (!auth_decrypt(&state->remote, state->remote.stream_key, iv, ciphertext, bytes, tag)) {
+	if (!auth_decrypt(state->remote.stream_key, iv, ciphertext, bytes, tag)) {
 		return -1;
 	}
 
@@ -418,7 +423,7 @@ int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *over
 
 void calico_cleanup(void *S)
 {
-	calico_internal_state *state = (calico_internal_state *)S;
+	InternalState *state = reinterpret_cast<InternalState *>( S );
 
 	if (state) {
 		if (state->flag == FLAG_KEYED_STREAM) {
