@@ -44,10 +44,47 @@ static const u32 IV_MSB = (1 << IV_BITS);
 static const u32 IV_MASK = (IV_MSB - 1);
 static const u32 IV_FUZZ = 0x286AD7;
 
+/*
+ * The user is responsible for how the Calico output is transported to a remote
+ * host for decryption.  It is flexible in that the overhead can be stored in
+ * any way the user desires.  Encrypted data is the same length as decrypted
+ * data and can be encrypted in-place.
+ *
+ * The overhead format:
+ *
+ * | <-- earlier bytes  later bytes ->|
+ * (00 01 02) (03 04 05 06 07 08 09 0a)
+ *     AD            MAC tag
+ *
+ * AD (Associated Data) (3 bytes):
+ *	R = Rekey ratchet flag bit (1 bit), stored in the high bit of byte 02.
+ *	IV = Truncated IV (23 bits)
+ * MAC (Message Authenticate Code) tag (8 bytes):
+ * 	Tag that authenticates both the encrypted message and the associated data.
+ */
+
+/*
+ * The initiator will periodically request a ratchet of the private keys.  This
+ * is done by flipping the R bit in the associated data of the message stored
+ * in the overhead, as shown above.
+ *
+ * When the responder sees an R bit flip, it will immediately ratchet its key
+ * by running K' = H(K), where H = BLAKE2 and K = the local encryption key.
+ * Any future outgoing encrypted messages will use the new key K'.  Note that
+ * this erases the previous key K and replaces it with K'.  This costs over
+ * 2^128 hash operations to run the ratchet backwards, so the security of the
+ * scheme is maintained: Previous outgoing messages can no longer be
+ * decrypted if the responder is compromised, providing forward secrecy.
+ *
+ * Both the 
+ */
+
 typedef struct {
 	u32 flag;
 	auth_enc_state local, remote;
 	u64 stream_local, stream_remote;
+
+	u32 ratchet_flag;
 
 	// Extended version for datagrams
 	antireplay_state window;
