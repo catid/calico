@@ -220,8 +220,8 @@ The overhead format:
 	    AD            MAC tag
 
 	AD (Associated Data) (3 bytes):
-		R = Rekey ratchet flag bit (1 bit), stored in the high bit of byte 02.
-		IV = Truncated IV (low 23 bits)
+		IV = Truncated IV (high 23 bits)
+		R = Rekey ratchet flag bit (1 bit), stored in the least significant bit.
 	MAC (Message Authenticate Code) tag (8 bytes):
 		Tag that authenticates both the encrypted message and the associated data.
 ~~~
