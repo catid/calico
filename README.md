@@ -205,6 +205,26 @@ recalculated and it is compared to the provided one in the overhead of the messa
 in constant-time.  If the MAC tag does not match, then the message is rejected.
 The message is then decrypted.  And the IV is marked as having been accepted.
 
+#### Overhead Format
+
+The user is responsible for how the Calico output is transported to a remote
+host for decryption.  It is flexible in that the overhead can be stored in
+any way the user desires.  Encrypted data is the same length as decrypted
+data and can be encrypted in-place.
+
+The overhead format:
+
+~~~
+	| <-- earlier bytes  later bytes ->|
+	(00 01 02) (03 04 05 06 07 08 09 0a)
+	    AD            MAC tag
+
+	AD (Associated Data) (3 bytes):
+		R = Rekey ratchet flag bit (1 bit), stored in the high bit of byte 02.
+		IV = Truncated IV (low 23 bits)
+	MAC (Message Authenticate Code) tag (8 bytes):
+		Tag that authenticates both the encrypted message and the associated data.
+~~~
 
 ## Discussion
 
@@ -327,6 +347,42 @@ leading to slower short-message performance.
 
 After weighing all three options over several months, SipHash-2-4 was selected as the
 MAC for Calico.
+
+#### Rekeying
+
+Calico supports periodic rekeying, initiated by the initiator.
+The advantage of this form of rekeying is to provide forward secrecy for
+long-lived connections, rather than to strengthen keys.
+
+Both the initiator and the responder keep two copies of the remote keys.
+There are two keys: ChaCha (256 bits) and MAC (128 bits).  To be clear,
+these are treated as one long 48 byte key and are updated together.
+Initially the key corresponding to R = 0 is the initial encryption key for
+the remote host (Kr).  The key corresponding to R = 1 is H(Kr).
+
+The initiator and responder can each ratchet its own encryption key.
+This is done by flipping the R bit in the associated data of the message.
+It can immediately start sending data under the new key.
+When the responder sees a ratchet (R bit flipped) from the initiator, then
+it will immediately ratchet its own key.
+
+When the responder sees an R bit flip, it will immediately ratchet its key
+by running K' = H(K), where H = BLAKE2 and K = the local encryption key.
+Any future outgoing encrypted messages will use the new key K'.  Note that
+this erases the previous key K and replaces it with K'.  It then costs over
+2^128 hash operations to run the ratchet backwards, so the security of the
+scheme is maintained: Previous outgoing messages can no longer be
+decrypted if the keys are compromised, providing forward secrecy.
+
+The initiator and responder both use the keys indicated by R when new
+datagrams arrive to authenticate and decrypt.  When the remote host sends a
+valid datagram for ~R, then the receiver starts a timer counting down to
+updating the R key with K[R] = H(K[~R]).  The timer is initially set to X
+seconds.  The timer is reset if a valid datagram for R is received.  This
+prevents the ratchet from losing data when it arrives out of order.
+
+The initiator will ratchet no more often than 2X seconds, where X is roughly
+1 minute.  This prevents desynchronization.
 
 
 ## References

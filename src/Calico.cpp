@@ -37,61 +37,6 @@ using namespace cat;
 
 #include <climits>
 
-/*
- * The user is responsible for how the Calico output is transported to a remote
- * host for decryption.  It is flexible in that the overhead can be stored in
- * any way the user desires.  Encrypted data is the same length as decrypted
- * data and can be encrypted in-place.
- *
- * The overhead format:
- *
- * | <-- earlier bytes  later bytes ->|
- * (00 01 02) (03 04 05 06 07 08 09 0a)
- *     AD            MAC tag
- *
- * AD (Associated Data) (3 bytes):
- *	R = Rekey ratchet flag bit (1 bit), stored in the high bit of byte 02.
- *	IV = Truncated IV (low 23 bits)
- * MAC (Message Authenticate Code) tag (8 bytes):
- * 	Tag that authenticates both the encrypted message and the associated data.
- */
-
-/*
- * Calico supports periodic rekeying, initiated by the initiator.
- * The advantage of this form of rekeying is to provide forward secrecy for
- * long-lived connections, rather than to strengthen keys.
- *
- * Both the initiator and the responder keep two copies of the remote keys.
- * There are two keys: ChaCha (256 bits) and MAC (128 bits).  To be clear,
- * these are treated as one long 48 byte key and are updated together.
- * Initially the key corresponding to R = 0 is the initial encryption key for
- * the remote host (Kr).  The key corresponding to R = 1 is H(Kr).
- *
- * The initiator and responder can each ratchet its own encryption key.
- * This is done by flipping the R bit in the associated data of the message.
- * It can immediately start sending data under the new key.
- * When the responder sees a ratchet (R bit flipped) from the initiator, then
- * it will immediately ratchet its own key.
- *
- * When the responder sees an R bit flip, it will immediately ratchet its key
- * by running K' = H(K), where H = BLAKE2 and K = the local encryption key.
- * Any future outgoing encrypted messages will use the new key K'.  Note that
- * this erases the previous key K and replaces it with K'.  It then costs over
- * 2^128 hash operations to run the ratchet backwards, so the security of the
- * scheme is maintained: Previous outgoing messages can no longer be
- * decrypted if the keys are compromised, providing forward secrecy.
- *
- * The initiator and responder both use the keys indicated by R when new
- * datagrams arrive to authenticate and decrypt.  When the remote host sends a
- * valid datagram for ~R, then the receiver starts a timer counting down to
- * updating the R key with K[R] = H(K[~R]).  The timer is initially set to X
- * seconds.  The timer is reset if a valid datagram for R is received.  This
- * prevents the ratchet from losing data when it arrives out of order.
- *
- * The initiator will ratchet no more often than 2X seconds, where X is roughly
- * 1 minute.  This prevents desynchronization.
- */
-
 // IV constants
 static const int IV_BYTES = 3;
 static const int IV_BITS = IV_BYTES * 8;
@@ -99,21 +44,34 @@ static const u32 IV_MSB = (1 << IV_BITS);
 static const u32 IV_MASK = (IV_MSB - 1);
 static const u32 IV_FUZZ = 0x286AD7;
 
+// Number of bytes in the keys for one transmitter
+// Includes 32 bytes for the encryption key
+// and 16 bytes for the MAC key
+static const int KEY_BYTES = 32 + 16;
+
 struct Keys {
 	// Encryption and MAC key for outgoing data
-	char outgoing[48];
+	char out[KEY_BYTES];
 
 	// Current and next encryption keys for incoming data
-	char incoming[2][48];
+	char in[2][KEY_BYTES];
 
 	// This is either 0 or 1 to indicate which of the two incoming
-	// keys is active
-	u32 active_incoming;
+	// keys is "active"; the other key is "inactive" and will be
+	// set to H(K_active)
+	u32 active_in;
 
 	// This is the millisecond timestamp when ratcheting started
 	// Otherwise it is set to 0 when ratcheting is not in progress
 	u32 base_ratchet_time;
 };
+
+// Minimum time between rekeying
+static const u32 RATCHET_PERIOD = 60 * 2 * 1000; // 120 seconds in milliseconds
+
+// This is the time after the receiver sees a remote key switch past
+// which the receiver will ratchet the remote key to forget the old one
+static const u32 RATCHET_REMOTE_TIMEOUT = 60 * 1000; // 60 seconds in milliseconds
 
 // Constants to indicate the Calico state object is keyed
 static const u32 FLAG_KEYED_STREAM = 0x6501ccef;
@@ -127,18 +85,18 @@ struct InternalState {
 	Keys stream;
 
 	// Next IV to use for outgoing stream messages
-	u64 stream_outgoing_iv;
+	u64 stream_out_iv;
 
 	// Next IV to expect for incoming stream messages
-	u64 stream_incoming_iv;
+	u64 stream_in_iv;
 
 	// Extended version for datagrams:
 
 	// Encryption and MAC keys for datagram mode
-	Keys datagram;
+	Keys dgram;
 
-	// Datagram next IV to send
-	u64 datagram_outgoing_iv;
+	// Next IV to use for outgoing datagram messages
+	u64 dgram_out_iv;
 
 	// Anti-replay window for incoming datagram IVs
 	antireplay_state window;
@@ -146,6 +104,30 @@ struct InternalState {
 
 // Flag to indicate that the library has been initialized with calico_init()
 static bool m_initialized = false;
+
+
+// Helper function to ratchet a key
+static void ratchet_key(const char key[KEY_BYTES], char next_key[KEY_BYTES]) {
+	blake2b_state B;
+
+	// Initialize BLAKE2 for 48 bytes of output (it supports up to 64)
+	if (blake2b_init(&B, KEY_BYTES)) {
+		return -1;
+	}
+
+	// Mix in the previous key
+	if (blake2b_update(&B, (const u8 *)key, KEY_BYTES)) {
+		return -1;
+	}
+
+	// Generate the new key
+	if (blake2b_final(&B, (u8 *)next_key, KEY_BYTES)) {
+		return -1;
+	}
+
+	// Erase temporary workspace
+	CAT_SECURE_OBJCLR(B);
+}
 
 
 #ifdef __cplusplus
@@ -163,7 +145,7 @@ int _calico_init(int expected_version)
 	if (sizeof(InternalState) > sizeof(calico_state)) {
 		return -1;
 	}
-	if (sizeof(InternalState) - sizeof(antireplay_state) > sizeof(calico_stream_only)) {
+	if (offsetof(InternalState, dgram) > sizeof(calico_stream_only)) {
 		return -1;
 	}
 
@@ -189,26 +171,33 @@ int calico_key(calico_state *S, int role, const void *key, int key_bytes)
 	// Set flag to unkeyed
 	state->flag = 0;
 
-	static const int KEY_BYTES = sizeof(auth_enc_state);
-	char keys[KEY_BYTES + KEY_BYTES];
+	// Stream and datagram keys for both sides
+	static const int COMBINED_BYTES = KEY_BYTES * 2;
+	char keys[COMBINED_BYTES * 2];
 
-	// Expand key into two keys
+	// Expand key into two sets of two keys
 	if (!auth_key_expand((const char *)key, keys, sizeof(keys))) {
 		return -1;
 	}
 
 	// Swap keys based on mode
 	char *lkey = keys, *rkey = keys;
-	if (role == CALICO_INITIATOR) lkey += KEY_BYTES;
-	else rkey += KEY_BYTES;
+	if (role == CALICO_INITIATOR) lkey += COMBINED_BYTES;
+	else rkey += COMBINED_BYTES;
 
 	// Copy keys into place
-	memcpy(&state->local, lkey, sizeof(auth_enc_state));
-	memcpy(&state->remote, rkey, sizeof(auth_enc_state));
+	memcpy(state->stream.out, lkey, KEY_BYTES);
+	memcpy(state->datagram.out, lkey + KEY_BYTES, KEY_BYTES);
+	memcpy(state->stream.in[0], rkey, KEY_BYTES);
+	memcpy(state->datagram.in[0], rkey + KEY_BYTES, KEY_BYTES);
+
+	// Generate the next remote key
+	ratchet_key(state->stream.in[0], state->stream.in[1]);
+	ratchet_key(state->datagram.in[0], state->datagram.in[1]);
 
 	// Initialize the IV subsystem for streams
-	state->stream_local = 0;
-	state->stream_remote = 0;
+	state->stream_out_iv = 0;
+	state->stream_in_iv = 0;
 
 	// Initialize the IV subsystem for datagrams
 	antireplay_init(&state->window);
@@ -241,10 +230,10 @@ int calico_key_stream_only(calico_stream_only *S, int role,
 	// Set flag to unkeyed
 	state->flag = 0;
 
-	static const int KEY_BYTES = sizeof(auth_enc_state);
-	char keys[KEY_BYTES + KEY_BYTES];
+	// Stream keys for both sides
+	char keys[KEY_BYTES * 2];
 
-	// Expand key into two keys
+	// Expand key into two sets of two keys
 	if (!auth_key_expand((const char *)key, keys, sizeof(keys))) {
 		return -1;
 	}
@@ -255,12 +244,15 @@ int calico_key_stream_only(calico_stream_only *S, int role,
 	else rkey += KEY_BYTES;
 
 	// Copy keys into place
-	memcpy(&state->local, lkey, sizeof(auth_enc_state));
-	memcpy(&state->remote, rkey, sizeof(auth_enc_state));
+	memcpy(state->stream.out, lkey, KEY_BYTES);
+	memcpy(state->stream.in[0], rkey, KEY_BYTES);
+
+	// Generate the next remote key
+	ratchet_key(state->stream.in[0], state->stream.in[1]);
 
 	// Initialize the IV subsystem for streams
-	state->stream_local = 0;
-	state->stream_remote = 0;
+	state->stream_out_iv = 0;
+	state->stream_in_iv = 0;
 
 	// Erase temporary keys from memory
 	CAT_SECURE_OBJCLR(keys);
