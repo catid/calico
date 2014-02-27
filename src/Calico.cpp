@@ -33,6 +33,7 @@
 #include "EndianNeutral.hpp"
 #include "SecureErase.hpp"
 #include "BitMath.hpp"
+#include "Clock.hpp"
 using namespace cat;
 
 #include <climits>
@@ -480,13 +481,15 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
 
 	// If the ratchet bit is not the active key,
 	if (ratchet_bit ^ state->dgram.active_in) {
-		// If 
-		if (state->dgram.in_ratchet_time) {
+		// If not already ratcheting,
+		if (!state->dgram.in_ratchet_time) {
+			// Set a timer until the key is erased
+			state->dgram.in_ratchet_time = m_clock.msec();
 		}
 	}
 
 	// Reconstruct the full IV counter
-	const u64 iv = ReconstructCounter<IV_BITS>(state->dgram.out[ratchet_bit], trunc_iv);
+	const u64 iv = ReconstructCounter<IV_BITS>(state->dgram.in[ratchet_bit], trunc_iv);
 
 	// Validate IV
 	if (!antireplay_check(&state->window, iv)) {
@@ -524,23 +527,26 @@ int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *over
 	// Get next expected IV
 	u64 iv = state->stream_remote;
 
+	const u8 *overhead_ratchet = reinterpret_cast<const u8 *>( overhead );
+	const u64 *overhead_tag = reinterpret_cast<const u64 *>( overhead_ratchet + 1 );
+
 	// Read MAC tag
-	const u64 *overhead_tag = reinterpret_cast<const u64 *>( overhead );
 	const u64 tag = getLE(*overhead_tag);
 
-	// Pull out the ratchet bit
-	const u32 ratchet_bit = trunc_iv & 1;
-	trunc_iv >>= 1;
+	// Read ratchet bit
+	const u32 ratchet_bit = *overhead_ratchet;
 
 	// If the ratchet bit is not the active key,
-	if (ratchet_bit ^ state->dgram.active_in) {
-		// TODO: Start key ratcheting here if not started yet
+	if (ratchet_bit ^ state->stream.active_in) {
+		// If not already ratcheting,
+		if (!state->stream.in_ratchet_time) {
+			// Set a timer until the key is erased
+			state->stream.in_ratchet_time = m_clock.msec();
+		}
 	}
 
-	// TODO
-
 	// Decrypt and check MAC
-	if (!auth_decrypt(state->remote.stream_key, iv, ciphertext, bytes, tag)) {
+	if (!auth_decrypt(state->stream.in[ratchet_bit], iv, ciphertext, bytes, tag)) {
 		return -1;
 	}
 
