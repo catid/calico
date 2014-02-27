@@ -71,7 +71,7 @@ enum CalicoRoles {
 
 enum CalicoOverhead {
 	CALICO_DATAGRAM_OVERHEAD = 11, // Number of bytes added per datagram message
-	CALICO_STREAM_OVERHEAD = 8 // Number of bytes added per stream message
+	CALICO_STREAM_OVERHEAD = 9 // Number of bytes added per stream message
 };
 
 /*

@@ -69,9 +69,12 @@ struct Keys {
 	// ratchets this bit flips
 	u32 active_out;
 
-	// This is the millisecond timestamp when ratcheting started
+	// This is the millisecond timestamp when incoming ratcheting started.
 	// Otherwise it is set to 0 when ratcheting is not in progress
-	u32 base_ratchet_time;
+	u32 in_ratchet_time;
+
+	// This is the millisecond timestamp for the last outgoing key ratchet
+	u32 out_ratchet_time;
 };
 
 // Minimum time between rekeying
@@ -112,6 +115,8 @@ struct InternalState {
 
 // Flag to indicate that the library has been initialized with calico_init()
 static bool m_initialized = false;
+
+static Clock m_clock;
 
 
 // Helper function to ratchet a key
@@ -156,6 +161,9 @@ int _calico_init(int expected_version)
 	if (offsetof(InternalState, dgram) > sizeof(calico_stream_only)) {
 		return -1;
 	}
+
+	// Make sure clock is initialized
+	m_clock.OnInitialize();
 
 	m_initialized = true;
 
@@ -217,7 +225,11 @@ int calico_key(calico_state *S, int role, const void *key, int key_bytes)
 
 	// Generate the next remote key
 	ratchet_key(state->stream.in[0], state->stream.in[1]);
-	ratchet_key(state->datagram.in[0], state->datagram.in[1]);
+	ratchet_key(state->dgram.in[0], state->dgram.in[1]);
+
+	// Mark when ratchet happened
+	const u32 msec = m_clock->msec();
+	state->stream.out_ratchet_time = state->dgram.out_ratchet_time = msec;
 
 	// Initialize the IV subsystem for streams
 	state->stream_out_iv = 0;
@@ -274,6 +286,10 @@ int calico_key_stream_only(calico_stream_only *S, int role,
 	// Generate the next remote key
 	ratchet_key(state->stream.in[0], state->stream.in[1]);
 
+	// Mark when ratchet happened
+	const u32 msec = m_clock->msec();
+	state->stream.out_ratchet_time = msec;
+
 	// Initialize the IV subsystem for streams
 	state->stream_out_iv = 0;
 	state->stream_in_iv = 0;
@@ -307,6 +323,15 @@ int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plain
 	// If out of IVs,
 	if (iv == 0xffffffffffffffffULL) {
 		return -1;
+	}
+
+	// If it is time to ratchet the key again,
+	if ((u32)(m_clock->msec() - state->dgram.out_ratchet_time) > RATCHET_PERIOD) {
+		// Flip the active key bit
+		state->dgram.active_out ^= 1;
+
+		// Ratchet to next key, erasing the old key
+		ratchet_key(state->dgram.out, state->dgram.out);
 	}
 
 	// Increment IV
@@ -353,13 +378,26 @@ int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext,
 		return -1;
 	}
 
+	// If it is time to ratchet the key again,
+	if ((u32)(m_clock->msec() - state->stream.out_ratchet_time) > RATCHET_PERIOD) {
+		// Flip the active key bit
+		state->stream.active_out ^= 1;
+
+		// Ratchet to next key, erasing the old key
+		ratchet_key(state->stream.out, state->stream.out);
+	}
+
 	// Increment IV
 	state->stream_out_iv = iv + 1;
 
 	// Encrypt and generate MAC tag
 	const u64 tag = auth_encrypt(state->stream.out, iv, plaintext, ciphertext, bytes);
 
-	u64 *overhead_tag = reinterpret_cast<u64 *>( overhead );
+	u8 *overhead_ratchet = reinterpret_cast<u8 *>( overhead );
+	u64 *overhead_tag = reinterpret_cast<u64 *>( overhead_ratchet + 1 );
+
+	// Write ratchet
+	*overhead_ratchet = (u8)state->stream.active_out;
 
 	// Write MAC tag
 	*overhead_tag = getLE(tag);
@@ -369,6 +407,41 @@ int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext,
 
 
 //// Decryption
+
+// Works for stream and datagram modes
+static void handle_ratchet(Keys *keys) {
+	// If ratchet time exceeded,
+	if ((u32)(m_clock->msec() - keys->in_ratchet_time) > RATCHET_REMOTE_TIMEOUT) {
+		// Get active and inactive key
+		const u32 active_key = keys->active_in;
+		const u32 inactive_key = active_key ^ 1;
+
+		/*
+		 * Before:
+		 *
+		 *	K[active] = oldest key
+		 *	K[inactive] = H(oldest key)
+		 */
+
+		// Update the inactive key: K' = H(K)
+		ratchet_key(keys->in[inactive_key], keys->in[active_key]);
+
+		/*
+		 * After:
+		 *
+		 *	K[inactive] = H(H(oldest key))
+		 *	K[active] = H(oldest key)
+		 *
+		 * The oldest key is now erased.
+		 */
+
+		// Switch which key is active
+		keys->active_in = inactive_key;
+
+		// Ratchet complete
+		keys->in_ratchet_time = 0;
+	}
+}
 
 int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
 							const void *overhead)
@@ -381,7 +454,11 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
 		return -1;
 	}
 
-	// TODO: Check if key ratchet should happen here
+	// If ratcheting is happening already,
+	if (state->dgram.in_ratchet_time) {
+		// Handle ratchet update
+		handle_ratchet(&state->dgram);
+	}
 
 	const u8 *overhead_iv = reinterpret_cast<const u8 *>( overhead );
 	const u64 *overhead_mac = reinterpret_cast<const u64 *>( overhead_iv + 3 );
@@ -403,7 +480,9 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
 
 	// If the ratchet bit is not the active key,
 	if (ratchet_bit ^ state->dgram.active_in) {
-		// TODO: Start key ratcheting here if not started yet
+		// If 
+		if (state->dgram.in_ratchet_time) {
+		}
 	}
 
 	// Reconstruct the full IV counter
@@ -430,12 +509,16 @@ int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *over
 {
 	InternalState *state = reinterpret_cast<InternalState *>( S );
 
-	// TODO: Check if key ratchet should happen here
-
 	// If input is invalid or Calico object is not keyed,
 	if (!m_initialized || !state || !ciphertext || !overhead || bytes < 0 ||
 		(state->flag != FLAG_KEYED_STREAM && state->flag != FLAG_KEYED_DATAGRAM)) {
 		return -1;
+	}
+
+	// If ratcheting is happening already,
+	if (state->stream.in_ratchet_time) {
+		// Handle ratchet update
+		handle_ratchet(&state->stream);
 	}
 
 	// Get next expected IV
