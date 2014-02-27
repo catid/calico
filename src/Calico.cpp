@@ -38,6 +38,15 @@ using namespace cat;
 
 #include <climits>
 
+#include "chacha.h"
+
+#ifndef CAT_CHACHA_IMPL
+#define chacha_blocks_impl chacha_blocks_ref
+#endif
+
+// Using the internal chacha_blocks() function to speed up invalid message rejection
+extern "C" void chacha_blocks_impl(chacha_state_t *state, const uint8_t *in, uint8_t *out, size_t bytes);
+
 // Additional data constants (includes IV and R-bit)
 static const int AD_BYTES = 3;
 static const int AD_BITS = AD_BYTES * 8;
@@ -144,6 +153,20 @@ static void ratchet_key(const char key[KEY_BYTES], char next_key[KEY_BYTES]) {
 
 	// Erase temporary workspace
 	CAT_SECURE_OBJCLR(B);
+}
+
+// Helper function to expand key using ChaCha20
+static bool key_expand(const char key[32], void *buffer, int bytes)
+{
+	if (bytes % 64) {
+		return false;
+	}
+
+	chacha_iv iv = {{ 0 }};
+
+	chacha((const chacha_key *)key, &iv, 0, (u8 *)buffer, bytes, 20);
+
+	return true;
 }
 
 
@@ -316,6 +339,22 @@ int calico_key_stream_only(calico_stream_only *S, int role,
 
 //// Encryption
 
+static u64 auth_encrypt(const char key[48], u64 iv_raw, const void *from,
+						void *to, int bytes)
+{
+	const u64 iv = getLE(iv_raw);
+
+	// Setup the cipher with the key and IV
+	chacha_state S;
+	chacha_init(&S, (const chacha_key *)key, (const chacha_iv *)&iv, 14);
+
+	// Encrypt data
+	chacha_blocks_impl(&S, (const u8 *)from, (u8 *)to, bytes);
+
+	// Generate MAC tag
+	return siphash24(key + 32, to, bytes, iv_raw);
+}
+
 int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plaintext,
 							int bytes, void *overhead)
 {
@@ -459,6 +498,31 @@ static void handle_ratchet(Keys *keys) {
 		// Ratchet complete
 		keys->in_ratchet_time = 0;
 	}
+}
+
+static bool auth_decrypt(const char key[48], u64 iv_raw,
+						 void *buffer, int bytes, u64 provided_tag)
+{
+	const u64 iv = getLE(iv_raw);
+
+	// Setup the cipher with the key and IV
+	chacha_state S;
+	chacha_init(&S, (const chacha_key *)key, (const chacha_iv *)&iv, 14);
+
+	// Generate expected MAC tag
+	const u64 expected_tag = siphash24(key + 32, buffer, bytes, iv);
+
+	// Verify MAC tag in constant-time
+	const u64 delta = expected_tag ^ provided_tag;
+	const u32 z = (u32)(delta >> 32) | (u32)delta;
+	if (z) {
+		return false;
+	}
+
+	// Decrypt data
+	chacha_blocks_impl(&S, (const u8 *)buffer, (u8 *)buffer, bytes);
+
+	return true;
 }
 
 int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
