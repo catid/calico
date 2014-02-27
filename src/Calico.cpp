@@ -93,6 +93,9 @@ struct InternalState {
 	// Flag indicating whether or not the Calico state object is keyed or not
 	u32 flag;
 
+	// Role of the connection, either CALICO_INITIATOR, CALICO_RESPONDER
+	u32 role;
+
 	// Encryption and MAC keys for stream mode
 	Keys stream;
 
@@ -204,6 +207,9 @@ int calico_key(calico_state *S, int role, const void *key, int key_bytes)
 	// Set flag to unkeyed
 	state->flag = 0;
 
+	// Set role
+	state->role = role;
+
 	// Stream and datagram keys for both sides
 	static const int COMBINED_BYTES = KEY_BYTES * 2;
 	char keys[COMBINED_BYTES * 2];
@@ -267,6 +273,9 @@ int calico_key_stream_only(calico_stream_only *S, int role,
 	// Set flag to unkeyed
 	state->flag = 0;
 
+	// Set role
+	state->role = role;
+
 	// Stream keys for both sides
 	char keys[KEY_BYTES * 2];
 
@@ -326,13 +335,17 @@ int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plain
 		return -1;
 	}
 
-	// If it is time to ratchet the key again,
-	if ((u32)(m_clock->msec() - state->dgram.out_ratchet_time) > RATCHET_PERIOD) {
-		// Flip the active key bit
-		state->dgram.active_out ^= 1;
+	// If initiator,
+	if (state->role == CALICO_INITIATOR) {
+		// If it is time to ratchet the key again,
+		if (state->dgram.active_out == state->dgram.active_in &&
+			(u32)(m_clock->msec() - state->dgram.out_ratchet_time) > RATCHET_PERIOD) {
+			// Flip the active key bit
+			state->dgram.active_out ^= 1;
 
-		// Ratchet to next key, erasing the old key
-		ratchet_key(state->dgram.out, state->dgram.out);
+			// Ratchet to next key, erasing the old key
+			ratchet_key(state->dgram.out, state->dgram.out);
+		}
 	}
 
 	// Increment IV
@@ -379,13 +392,17 @@ int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext,
 		return -1;
 	}
 
-	// If it is time to ratchet the key again,
-	if ((u32)(m_clock->msec() - state->stream.out_ratchet_time) > RATCHET_PERIOD) {
-		// Flip the active key bit
-		state->stream.active_out ^= 1;
+	// If initiator,
+	if (state->role == CALICO_INITIATOR) {
+		// If it is time to ratchet the key again,
+		if (state->stream.active_out == state->stream.active_in &&
+			(u32)(m_clock->msec() - state->stream.out_ratchet_time) > RATCHET_PERIOD) {
+			// Flip the active key bit
+			state->stream.active_out ^= 1;
 
-		// Ratchet to next key, erasing the old key
-		ratchet_key(state->stream.out, state->stream.out);
+			// Ratchet to next key, erasing the old key
+			ratchet_key(state->stream.out, state->stream.out);
+		}
 	}
 
 	// Increment IV
@@ -485,6 +502,19 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
 		if (!state->dgram.in_ratchet_time) {
 			// Set a timer until the key is erased
 			state->dgram.in_ratchet_time = m_clock.msec();
+
+			// If responder,
+			if (state->role == CALICO_RESPONDER) {
+				// If it is time to ratchet the key again,
+				if (state->dgram.active_out == state->dgram.active_in &&
+						(u32)(m_clock->msec() - state->dgram.out_ratchet_time) > RATCHET_PERIOD) {
+					// Flip the active key bit
+					state->dgram.active_out ^= 1;
+
+					// Ratchet to next key, erasing the old key
+					ratchet_key(state->dgram.out, state->dgram.out);
+				}
+			}
 		}
 	}
 
@@ -542,6 +572,19 @@ int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *over
 		if (!state->stream.in_ratchet_time) {
 			// Set a timer until the key is erased
 			state->stream.in_ratchet_time = m_clock.msec();
+
+			// If responder,
+			if (state->role == CALICO_RESPONDER) {
+				// If it is time to ratchet the key again,
+				if (state->stream.active_out == state->stream.active_in &&
+					(u32)(m_clock->msec() - state->stream.out_ratchet_time) > RATCHET_PERIOD) {
+					// Flip the active key bit
+					state->stream.active_out ^= 1;
+
+					// Ratchet to next key, erasing the old key
+					ratchet_key(state->stream.out, state->stream.out);
+				}
+			}
 		}
 	}
 
