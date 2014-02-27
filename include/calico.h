@@ -56,11 +56,11 @@ extern int _calico_init(int expected_version);
 
 
 typedef struct {
-	char internal[178];
+	char internal[8 + 16 + 160];
 } calico_stream_only;
 
 typedef struct {
-	char internal[178 + 160 + 136];
+	char internal[8 + 16 + 160 + 160 + 8 + 136];
 } calico_state;
 
 

@@ -340,10 +340,6 @@ void BenchmarkDecryptSuccess() {
 void ReplayMACTest() {
 	char key[32] = {0};
 
-	static const int IV_BYTES = 3;
-	static const int IV_BITS = IV_BYTES * 8;
-	static const u32 IV_MSB = (1 << IV_BITS);
-	static const u32 IV_MASK = (IV_MSB - 1);
 	static const u32 IV_FUZZ = 0x286AD7;
 
 	calico_state x, y;
@@ -352,7 +348,6 @@ void ReplayMACTest() {
 	char data_iv1[32] = {1};
 	char overhead_iv1[CALICO_DATAGRAM_OVERHEAD];
 	char plaintext[32];
-	char data_iv_mod[32];
 	char overhead_iv_mod[CALICO_DATAGRAM_OVERHEAD];
 
 	assert(!calico_key(&x, CALICO_INITIATOR, key, sizeof(key)));

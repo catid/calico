@@ -9,20 +9,21 @@ CC = clang -m64
 OPTFLAGS = -O4 -DCAT_CHACHA_IMPL
 DBGFLAGS = -g -O0 -DDEBUG -DCAT_CHACHA_IMPL
 CFLAGS = -Wall -fstrict-aliasing -I./libcat -I./include -I./chacha-opt \
-		 -Dchacha_blocks_impl=chacha_blocks_ssse3 -Dhchacha_impl=hchacha
+		 -Dchacha_blocks_impl=chacha_blocks_ssse3 -Dhchacha_impl=hchacha \
+		 -I./blake2/sse
 LIBNAME = bin/libcalico.a
 LIBS = -L./bin -lcalico
 
 
 # Object files
 
-shared_test_o = Clock.o
+shared_test_o =
 
-extern_o = chacha.o chacha_blocks_ssse3-64.o
+extern_o = chacha.o chacha_blocks_ssse3-64.o blake2b.o
 
-libcat_o = BitMath.o EndianNeutral.o SecureErase.o
+libcat_o = BitMath.o EndianNeutral.o SecureErase.o Clock.o
 
-calico_o = AntiReplayWindow.o Calico.o AuthEnc.o SipHash.o $(libcat_o) $(extern_o)
+calico_o = AntiReplayWindow.o Calico.o SipHash.o $(libcat_o) $(extern_o)
 
 calico_test_o = calico_test.o $(shared_test_o) SecureEqual.o
 siphash_test_o = siphash_test.o $(shared_test_o)
@@ -105,14 +106,14 @@ AntiReplayWindow.o : src/AntiReplayWindow.cpp
 Calico.o : src/Calico.cpp
 	$(CCPP) $(CFLAGS) -c src/Calico.cpp
 
-AuthEnc.o : src/AuthEnc.cpp
-	$(CCPP) $(CFLAGS) -c src/AuthEnc.cpp
-
 chacha.o : chacha-opt/chacha.c
 	$(CC) $(CFLAGS) -std=c99 -c chacha-opt/chacha.c
 
 chacha_blocks_ssse3-64.o : chacha-opt/chacha_blocks_ssse3-64.S
 	$(CC) $(CFLAGS) -c chacha-opt/chacha_blocks_ssse3-64.S
+
+blake2b.o : blake2/sse/blake2b.c
+	$(CC) $(CFLAGS) -std=c99 -c blake2/sse/blake2b.c
 
 
 # Executable objects

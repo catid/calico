@@ -28,17 +28,18 @@
 
 #include "calico.h"
 
-#include "AuthEnc.hpp"
 #include "AntiReplayWindow.hpp"
 #include "EndianNeutral.hpp"
 #include "SecureErase.hpp"
 #include "BitMath.hpp"
 #include "Clock.hpp"
+#include "SipHash.hpp"
 using namespace cat;
 
 #include <climits>
 
 #include "chacha.h"
+#include "blake2.h"
 
 #ifndef CAT_CHACHA_IMPL
 #define chacha_blocks_impl chacha_blocks_ref
@@ -133,7 +134,7 @@ static Clock m_clock;
 
 
 // Helper function to ratchet a key
-static void ratchet_key(const char key[KEY_BYTES], char next_key[KEY_BYTES]) {
+static int ratchet_key(const char key[KEY_BYTES], char next_key[KEY_BYTES]) {
 	blake2b_state B;
 
 	// Initialize BLAKE2 for 48 bytes of output (it supports up to 64)
@@ -153,6 +154,8 @@ static void ratchet_key(const char key[KEY_BYTES], char next_key[KEY_BYTES]) {
 
 	// Erase temporary workspace
 	CAT_SECURE_OBJCLR(B);
+
+	return 0;
 }
 
 // Helper function to expand key using ChaCha20
@@ -238,7 +241,7 @@ int calico_key(calico_state *S, int role, const void *key, int key_bytes)
 	char keys[COMBINED_BYTES * 2];
 
 	// Expand key into two sets of two keys
-	if (!auth_key_expand((const char *)key, keys, sizeof(keys))) {
+	if (!key_expand((const char *)key, keys, sizeof(keys))) {
 		return -1;
 	}
 
@@ -249,16 +252,20 @@ int calico_key(calico_state *S, int role, const void *key, int key_bytes)
 
 	// Copy keys into place
 	memcpy(state->stream.out, lkey, KEY_BYTES);
-	memcpy(state->datagram.out, lkey + KEY_BYTES, KEY_BYTES);
+	memcpy(state->dgram.out, lkey + KEY_BYTES, KEY_BYTES);
 	memcpy(state->stream.in[0], rkey, KEY_BYTES);
-	memcpy(state->datagram.in[0], rkey + KEY_BYTES, KEY_BYTES);
+	memcpy(state->dgram.in[0], rkey + KEY_BYTES, KEY_BYTES);
 
 	// Generate the next remote key
-	ratchet_key(state->stream.in[0], state->stream.in[1]);
-	ratchet_key(state->dgram.in[0], state->dgram.in[1]);
+	if (ratchet_key(state->stream.in[0], state->stream.in[1])) {
+		return -1;
+	}
+	if (ratchet_key(state->dgram.in[0], state->dgram.in[1])) {
+		return -1;
+	}
 
 	// Mark when ratchet happened
-	const u32 msec = m_clock->msec();
+	const u32 msec = m_clock.msec();
 	state->stream.out_ratchet_time = state->dgram.out_ratchet_time = msec;
 
 	// Initialize the IV subsystem for streams
@@ -303,7 +310,7 @@ int calico_key_stream_only(calico_stream_only *S, int role,
 	char keys[KEY_BYTES * 2];
 
 	// Expand key into two sets of two keys
-	if (!auth_key_expand((const char *)key, keys, sizeof(keys))) {
+	if (!key_expand((const char *)key, keys, sizeof(keys))) {
 		return -1;
 	}
 
@@ -317,10 +324,12 @@ int calico_key_stream_only(calico_stream_only *S, int role,
 	memcpy(state->stream.in[0], rkey, KEY_BYTES);
 
 	// Generate the next remote key
-	ratchet_key(state->stream.in[0], state->stream.in[1]);
+	if (ratchet_key(state->stream.in[0], state->stream.in[1])) {
+		return -1;
+	}
 
 	// Mark when ratchet happened
-	const u32 msec = m_clock->msec();
+	const u32 msec = m_clock.msec();
 	state->stream.out_ratchet_time = msec;
 
 	// Initialize the IV subsystem for streams
@@ -378,12 +387,14 @@ int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plain
 	if (state->role == CALICO_INITIATOR) {
 		// If it is time to ratchet the key again,
 		if (state->dgram.active_out == state->dgram.active_in &&
-			(u32)(m_clock->msec() - state->dgram.out_ratchet_time) > RATCHET_PERIOD) {
+			(u32)(m_clock.msec() - state->dgram.out_ratchet_time) > RATCHET_PERIOD) {
 			// Flip the active key bit
 			state->dgram.active_out ^= 1;
 
 			// Ratchet to next key, erasing the old key
-			ratchet_key(state->dgram.out, state->dgram.out);
+			if (ratchet_key(state->dgram.out, state->dgram.out)) {
+				return -1;
+			}
 		}
 	}
 
@@ -435,26 +446,27 @@ int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext,
 	if (state->role == CALICO_INITIATOR) {
 		// If it is time to ratchet the key again,
 		if (state->stream.active_out == state->stream.active_in &&
-			(u32)(m_clock->msec() - state->stream.out_ratchet_time) > RATCHET_PERIOD) {
+			(u32)(m_clock.msec() - state->stream.out_ratchet_time) > RATCHET_PERIOD) {
 			// Flip the active key bit
 			state->stream.active_out ^= 1;
 
 			// Ratchet to next key, erasing the old key
-			ratchet_key(state->stream.out, state->stream.out);
+			if (ratchet_key(state->stream.out, state->stream.out)) {
+				return -1;
+			}
 		}
 	}
 
 	// Increment IV
 	state->stream_out_iv = iv + 1;
 
+	u64 *overhead_tag = reinterpret_cast<u64 *>( overhead );
+
 	// Encrypt and generate MAC tag
-	const u64 tag = auth_encrypt(state->stream.out, iv, plaintext, ciphertext, bytes);
+	u64 tag = auth_encrypt(state->stream.out, iv, plaintext, ciphertext, bytes);
 
-	u8 *overhead_ratchet = reinterpret_cast<u8 *>( overhead );
-	u64 *overhead_tag = reinterpret_cast<u64 *>( overhead_ratchet + 1 );
-
-	// Write ratchet
-	*overhead_ratchet = (u8)state->stream.active_out;
+	// Attach active key bit to tag field
+	tag = (tag << 1) | state->stream.active_out;
 
 	// Write MAC tag
 	*overhead_tag = getLE(tag);
@@ -468,7 +480,7 @@ int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext,
 // Works for stream and datagram modes
 static void handle_ratchet(Keys *keys) {
 	// If ratchet time exceeded,
-	if ((u32)(m_clock->msec() - keys->in_ratchet_time) > RATCHET_REMOTE_TIMEOUT) {
+	if ((u32)(m_clock.msec() - keys->in_ratchet_time) > RATCHET_REMOTE_TIMEOUT) {
 		// Get active and inactive key
 		const u32 active_key = keys->active_in;
 		const u32 inactive_key = active_key ^ 1;
@@ -500,8 +512,23 @@ static void handle_ratchet(Keys *keys) {
 	}
 }
 
-static bool auth_decrypt(const char key[48], u64 iv_raw,
-						 void *buffer, int bytes, u64 provided_tag)
+static bool check_auth(const char key[48], u64 iv, int shift,
+					   const void *buffer, int bytes, u64 tag)
+{
+	// Generate expected MAC tag
+	const u64 expected_tag = siphash24(key + 32, buffer, bytes, iv);
+
+	// Verify MAC tag in constant-time
+	const u64 delta = (expected_tag ^ tag) >> shift;
+	const u32 z = (u32)(delta >> 32) | (u32)delta;
+	if (z) {
+		return false;
+	}
+
+	return true;
+}
+
+static void decrypt(const u64 iv_raw, const char key[48], void *buffer, int bytes)
 {
 	const u64 iv = getLE(iv_raw);
 
@@ -509,20 +536,8 @@ static bool auth_decrypt(const char key[48], u64 iv_raw,
 	chacha_state S;
 	chacha_init(&S, (const chacha_key *)key, (const chacha_iv *)&iv, 14);
 
-	// Generate expected MAC tag
-	const u64 expected_tag = siphash24(key + 32, buffer, bytes, iv);
-
-	// Verify MAC tag in constant-time
-	const u64 delta = expected_tag ^ provided_tag;
-	const u32 z = (u32)(delta >> 32) | (u32)delta;
-	if (z) {
-		return false;
-	}
-
 	// Decrypt data
 	chacha_blocks_impl(&S, (const u8 *)buffer, (u8 *)buffer, bytes);
-
-	return true;
 }
 
 int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
@@ -571,7 +586,7 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
 			if (state->role == CALICO_RESPONDER) {
 				// If it is time to ratchet the key again,
 				if (state->dgram.active_out == state->dgram.active_in &&
-						(u32)(m_clock->msec() - state->dgram.out_ratchet_time) > RATCHET_PERIOD) {
+						(u32)(m_clock.msec() - state->dgram.out_ratchet_time) > RATCHET_PERIOD) {
 					// Flip the active key bit
 					state->dgram.active_out ^= 1;
 
@@ -583,17 +598,22 @@ int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes,
 	}
 
 	// Reconstruct the full IV counter
-	const u64 iv = ReconstructCounter<IV_BITS>(state->dgram.in[ratchet_bit], trunc_iv);
+	const u64 iv = ReconstructCounter<IV_BITS>(state->window.last_accepted_iv, trunc_iv);
 
 	// Validate IV
 	if (!antireplay_check(&state->window, iv)) {
 		return -1;
 	}
 
-	// Decrypt and check MAC
-	if (!auth_decrypt(state->remote.datagram_key, iv, ciphertext, bytes, tag)) {
+	// Get encryption/MAC key
+	const char *key = state->dgram.in[ratchet_bit];
+
+	// Authenticate
+	if (!check_auth(key, iv, 0, ciphertext, bytes, tag)) {
 		return -1;
 	}
+
+	decrypt(iv, key, ciphertext, bytes);
 
 	// Accept this IV
 	antireplay_accept(&state->window, iv);
@@ -619,16 +639,18 @@ int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *over
 	}
 
 	// Get next expected IV
-	u64 iv = state->stream_remote;
+	const u64 iv = state->stream_in_iv;
 
-	const u8 *overhead_ratchet = reinterpret_cast<const u8 *>( overhead );
-	const u64 *overhead_tag = reinterpret_cast<const u64 *>( overhead_ratchet + 1 );
+	const u64 *overhead_tag = reinterpret_cast<const u64 *>( overhead );
 
 	// Read MAC tag
 	const u64 tag = getLE(*overhead_tag);
 
 	// Read ratchet bit
-	const u32 ratchet_bit = *overhead_ratchet;
+	const u32 ratchet_bit = (u32)tag & 1;
+
+	// Get encryption/MAC key
+	const char *key = state->dgram.in[ratchet_bit];
 
 	// If the ratchet bit is not the active key,
 	if (ratchet_bit ^ state->stream.active_in) {
@@ -641,7 +663,7 @@ int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *over
 			if (state->role == CALICO_RESPONDER) {
 				// If it is time to ratchet the key again,
 				if (state->stream.active_out == state->stream.active_in &&
-					(u32)(m_clock->msec() - state->stream.out_ratchet_time) > RATCHET_PERIOD) {
+					(u32)(m_clock.msec() - state->stream.out_ratchet_time) > RATCHET_PERIOD) {
 					// Flip the active key bit
 					state->stream.active_out ^= 1;
 
@@ -652,13 +674,15 @@ int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *over
 		}
 	}
 
-	// Decrypt and check MAC
-	if (!auth_decrypt(state->stream.in[ratchet_bit], iv, ciphertext, bytes, tag)) {
+	// Authenticate
+	if (!check_auth(key, iv, 1, ciphertext, bytes, tag)) {
 		return -1;
 	}
 
+	decrypt(iv, key, ciphertext, bytes);
+
 	// Advance IV on success
-	state->stream_remote = iv + 1;
+	state->stream_in_iv = iv + 1;
 
 	return 0;
 }

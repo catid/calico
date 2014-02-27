@@ -4,3 +4,6 @@
 [submodule "chacha-opt"]
 	path = chacha-opt
 	url = https://github.com/floodyberry/chacha-opt.git
+[submodule "blake2"]
+	path = blake2
+	url = https://github.com/BLAKE2/BLAKE2.git
