@@ -79,7 +79,7 @@ struct HalfDuplexKey {
 	u64 iv;
 };
 
-struct Keys {
+struct Key {
 	// Encryption and MAC key for outgoing data
 	char out_key[KEY_BYTES];
 
@@ -108,12 +108,12 @@ struct InternalState {
 	u32 role;
 
 	// Encryption and MAC keys for stream mode
-	Keys stream;
+	Key stream;
 
 	// --- Extended version for datagrams: ---
 
 	// Encryption and MAC keys for datagram mode
-	Keys dgram;
+	Key dgram;
 
 	// Anti-replay window for incoming datagram IVs
 	antireplay_state window;
@@ -182,11 +182,11 @@ static u64 auth_encrypt(const char key[48], u64 iv_raw, const void *from,
 }
 
 // Helper function to conditionally perform key ratchet on receiver side
-static void handle_ratchet(Keys *keys) {
+static void handle_ratchet(Key *key) {
 	// If ratchet time exceeded,
-	if ((u32)(m_clock.msec() - keys->in_ratchet_time) > RATCHET_REMOTE_TIMEOUT) {
+	if ((u32)(m_clock.msec() - key->in.ratchet_time) > RATCHET_REMOTE_TIMEOUT) {
 		// Get active and inactive key
-		const u32 active_key = keys->active_in;
+		const u32 active_key = key->in.active;
 		const u32 inactive_key = active_key ^ 1;
 
 		/*
@@ -197,7 +197,7 @@ static void handle_ratchet(Keys *keys) {
 		*/
 
 		// Update the inactive key: K' = H(K)
-		ratchet_key(keys->in[inactive_key], keys->in[active_key]);
+		ratchet_key(key->in_key[inactive_key], key->in_key[active_key]);
 
 		/*
 		* After:
@@ -209,10 +209,10 @@ static void handle_ratchet(Keys *keys) {
 		*/
 
 		// Switch which key is active
-		keys->active_in = inactive_key;
+		key->in.active = inactive_key;
 
 		// Ratchet complete
-		keys->in_ratchet_time = 0;
+		key->in.ratchet_time = 0;
 	}
 }
 
@@ -395,14 +395,14 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 
 	// Select key
 	Key *key;
-	if (transport == CALICO_DATAGRAM) {
+	if (overhead_size == CALICO_DATAGRAM_OVERHEAD) {
 		key = &state->dgram;
 
 		// If state is not keyed for datagrams,
 		if (state->flag != FLAG_KEYED_DATAGRAM) {
 			return -1;
 		}
-	} else if (transport == CALICO_STREAM) {
+	} else if (overhead_size == CALICO_STREAM_OVERHEAD) {
 		key = &state->stream;
 	} else {
 		// Invalid input
@@ -436,9 +436,9 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 	key->out.iv = iv + 1;
 
 	// Encrypt and generate MAC tag
-	const u64 tag = auth_encrypt(key->out_key, iv, plaintext, ciphertext, bytes);
+	u64 tag = auth_encrypt(key->out_key, iv, plaintext, ciphertext, bytes);
 
-	if (transport == CALICO_DATAGRAM) {
+	if (overhead_size == CALICO_DATAGRAM_OVERHEAD) {
 		// Obfuscate the truncated IV
 		u32 trunc_iv = ((u32)iv << 1) | key->out.active;
 		trunc_iv -= (u32)tag;
@@ -480,14 +480,14 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 
 	// Select key
 	Key *key;
-	if (transport == CALICO_DATAGRAM) {
+	if (overhead_size == CALICO_DATAGRAM_OVERHEAD) {
 		key = &state->dgram;
 
 		// If state is not keyed for datagrams,
 		if (state->flag != FLAG_KEYED_DATAGRAM) {
 			return -1;
 		}
-	} else if (transport == CALICO_STREAM) {
+	} else if (overhead_size == CALICO_STREAM_OVERHEAD) {
 		key = &state->stream;
 	} else {
 		// Invalid input
@@ -509,7 +509,7 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 	u64 iv;
 	int auth_shift;
 
-	if (transport == CALICO_DATAGRAM) {
+	if (overhead_size == CALICO_DATAGRAM_OVERHEAD) {
 		const u8 *overhead_iv = reinterpret_cast<const u8 *>( overhead_mac + 1 );
 
 		// Grab the obfuscated IV
@@ -573,7 +573,7 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 		}
 	}
 
-	decrypt(iv, key, ciphertext, bytes);
+	decrypt(iv, dec_key, ciphertext, bytes);
 
 	// Accept this IV
 	antireplay_accept(&state->window, iv);
@@ -584,3 +584,4 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 #ifdef __cplusplus
 }
 #endif
+
