@@ -74,6 +74,11 @@ enum CalicoOverhead {
 	CALICO_STREAM_OVERHEAD = 8		// Number of bytes added per stream message
 };
 
+enum CalicoTransport {
+	CALICO_DATAGRAM = 64,
+	CALICO_STREAM = 128
+};
+
 /*
  * Initializes the calico_state object with a role and key
  *
@@ -90,8 +95,12 @@ enum CalicoOverhead {
  * It is important to only call calico_key() once per key.  It is not necessary
  * to use two calico_state objects to transmit and receive data; one is enough.
  *
+ * It is possible to use a smaller stream-only state object, which avoids memory
+ * for the datagram-related state information.
+ *
  * Calico will periodically rekey itself to provide forward secrecy without any
- * interaction about once every 10 minutes.
+ * interaction about once every 10 minutes.  If a calico_stream_only object is
+ * keyed, then CALICO_DATAGRAM cannot be specified for calico_encrypt().
  *
  * When finished with the Calico state object, call calico_cleanup().
  *
@@ -104,18 +113,10 @@ enum CalicoOverhead {
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_key(calico_state *S, int role, const void *key, int key_bytes);
-
-/*
- * To cut the amount of memory required for encryption in half, a TCP-stream-
- * only mode is also offered.
- */
-extern int calico_key_stream_only(calico_stream_only *S, int role, const void *key, int key_bytes);
+extern int calico_key(void *S, int state_size, int role, const void *key, int key_bytes);
 
 /*
  * Encrypt plaintext into ciphertext for datagram transport
- *
- * UDP-based protocols work with this type of encryption.
  *
  * The plaintext buffer should contain the message to encrypt.  The ciphertext
  * buffer will be set to the encrypted message, which is the same size as the
@@ -135,7 +136,7 @@ extern int calico_key_stream_only(calico_stream_only *S, int role, const void *k
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void *plaintext, int bytes, void *overhead);
+extern int calico_encrypt(calico_state *S, int transport, void *ciphertext, const void *plaintext, int bytes, void *overhead);
 
 /*
  * Decrypt ciphertext into plaintext from datagram transport
@@ -151,50 +152,7 @@ extern int calico_datagram_encrypt(calico_state *S, void *ciphertext, const void
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_datagram_decrypt(calico_state *S, void *ciphertext, int bytes, const void *overhead);
-
-/*
- * Encrypt plaintext into ciphertext for stream transport
- *
- * This function accepts either a calico_state or calico_stream_only object.
- *
- * TCP-based protocols work best with this type of encryption.
- *
- * The plaintext buffer should contain the message to encrypt.  The ciphertext
- * buffer will be set to the encrypted message, which is the same size as the
- * plaintext buffer, and may also be done in-place.
- *
- * If more than 2^64 messages are encrypted with this function, it will start
- * to return non-zero indicating a failure.  This should never happen, but the
- * proper response is to terminate the connection and reconnect when encryption
- * fails in general.
- *
- * Transmit the overhead buffer along with the ciphertext.
- *
- * Preconditions:
- * 	overhead buffer contains CALICO_STREAM_OVERHEAD bytes
- *
- * Returns 0 on success.
- * Returns non-zero if one of the input parameters is invalid.
- * It is important to check the return value to avoid active attacks.
- */
-extern int calico_stream_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes, void *overhead);
-
-/*
- * Decrypt ciphertext into plaintext from stream transport
- *
- * TCP-based protocols work best with this type of encryption.
- *
- * The ciphertext is decrypted in-place.
- *
- * Preconditions:
- * 	overhead buffer contains CALICO_STREAM_OVERHEAD bytes
- *
- * Returns 0 on success.
- * Returns non-zero if one of the input parameters is invalid.
- * It is important to check the return value to avoid active attacks.
- */
-extern int calico_stream_decrypt(void *S, void *ciphertext, int bytes, const void *overhead);
+extern int calico_decrypt(calico_state *S, int transport, void *ciphertext, int bytes, const void *overhead);
 
 /*
  * Clean up a calico_state or calico_stream_only object
@@ -211,4 +169,3 @@ extern void calico_cleanup(void *S);
 
 
 #endif // CAT_CALICO_H
-
