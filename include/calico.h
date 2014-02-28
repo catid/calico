@@ -75,8 +75,8 @@ enum CalicoOverhead {
 };
 
 enum CalicoTransport {
-	CALICO_DATAGRAM = 64,
-	CALICO_STREAM = 128
+	CALICO_DATAGRAM = 666,
+	CALICO_STREAM = 777
 };
 
 /*
@@ -116,7 +116,7 @@ enum CalicoTransport {
 extern int calico_key(void *S, int state_size, int role, const void *key, int key_bytes);
 
 /*
- * Encrypt plaintext into ciphertext for datagram transport
+ * Encrypt plaintext into ciphertext
  *
  * The plaintext buffer should contain the message to encrypt.  The ciphertext
  * buffer will be set to the encrypted message, which is the same size as the
@@ -129,30 +129,22 @@ extern int calico_key(void *S, int state_size, int role, const void *key, int ke
  *
  * Transmit the overhead buffer along with the ciphertext.
  *
- * Preconditions:
- * 	overhead buffer contains CALICO_DATAGRAM_OVERHEAD bytes
- *
  * Returns 0 on success.
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_encrypt(calico_state *S, int transport, void *ciphertext, const void *plaintext, int bytes, void *overhead);
+extern int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes, void *overhead, int overhead_size);
 
 /*
- * Decrypt ciphertext into plaintext from datagram transport
- *
- * UDP-based protocols work with this type of encryption.
+ * Decrypt ciphertext into plaintext
  *
  * The ciphertext is decrypted in-place.
  *
- * Preconditions:
- *	overhead buffer contains CALICO_DATAGRAM_OVERHEAD bytes
- *
  * Returns 0 on success.
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_decrypt(calico_state *S, int transport, void *ciphertext, int bytes, const void *overhead);
+extern int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead, int overhead_size);
 
 /*
  * Clean up a calico_state or calico_stream_only object

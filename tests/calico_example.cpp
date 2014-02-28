@@ -24,9 +24,9 @@ int main()
 	// Never use the same secret key twice.  Always use a new, random key every
 	// time you call calico_key.
 
-	assert(!calico_key(&initiator, CALICO_INITIATOR, key, sizeof(key)));
+	assert(!calico_key(&initiator, sizeof(initiator), CALICO_INITIATOR, key, sizeof(key)));
 
-	assert(!calico_key(&responder, CALICO_RESPONDER, key, sizeof(key)));
+	assert(!calico_key(&responder, sizeof(initiator), CALICO_RESPONDER, key, sizeof(key)));
 
 	// Choose a message to send
 	const char *message = "The message was sent through the Calico secure tunnel successfully!";
@@ -44,7 +44,7 @@ int main()
 	// UDP example:
 
 	// Encrypt the message into the packet
-	assert(!calico_datagram_encrypt(&initiator, packet, message, message_length, overhead));
+	assert(!calico_encrypt(&initiator, packet, message, message_length, overhead, sizeof(overhead)));
 
 	int packet_length = message_length + CALICO_DATAGRAM_OVERHEAD;
 
@@ -57,7 +57,7 @@ int main()
 	assert(decoded_message_length >= 0);
 
 	// Decrypt the message from the packet
-	assert(!calico_datagram_decrypt(&responder, packet, decoded_message_length, overhead));
+	assert(!calico_decrypt(&responder, packet, decoded_message_length, overhead, sizeof(overhead)));
 
 	// The decrypted message size should match the original message size
 	assert(decoded_message_length == message_length);
@@ -75,7 +75,7 @@ int main()
 	char *packet_msg = packet + sizeof(int) + CALICO_STREAM_OVERHEAD;
 
 	// Encrypt the message into the packet, adding some overhead (8 bytes)
-	assert(!calico_stream_encrypt(&initiator, packet_msg, message, message_length, overhead));
+	assert(!calico_encrypt(&initiator, packet_msg, message, message_length, overhead, sizeof(overhead)));
 
 
 	// <-- Pretend that right here we sent the TCP message over the Internet.
@@ -91,7 +91,7 @@ int main()
 	packet_msg = packet + sizeof(int) + CALICO_STREAM_OVERHEAD;
 
 	// Decrypt the message from the packet
-	assert(!calico_stream_decrypt(&responder, packet_msg, decoded_message_length, overhead));
+	assert(!calico_decrypt(&responder, packet_msg, decoded_message_length, overhead, sizeof(overhead)));
 
 	// And the decrypted message contents will match the original message
 	assert(!memcmp(message, packet_msg, message_length));
@@ -100,4 +100,3 @@ int main()
 
 	return 0;
 }
-
