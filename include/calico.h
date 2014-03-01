@@ -30,7 +30,9 @@
 #define CAT_CALICO_H
 
 /*
- * None of these functions are thread-safe.
+ * These functions are NOT thread-safe.
+ *
+ * It is NOT safe to encrypt in one thread while decrypting in another.
  */
 
 #ifdef __cplusplus

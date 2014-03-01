@@ -32,32 +32,32 @@ Calico does not consume any randomness to operate.
 Output of `make test`:
 
 ~~~
-Running test 5 : Benchmark Initialize()
-Benchmark: Initialize() in 0.49264 usec on average / 2.02988e+06 per second
+Running test 8 : Benchmark Initialize()
+Benchmark: Initialize() in 1.14809 usec on average / 871012 per second
 +++ Test passed.
 
-Running test 6 : Benchmark Encrypt()
-calico_datagram_encrypt: 10000 bytes in 8.30996 usec on average / 1203.38 MBPS / 120338 per second
-calico_datagram_encrypt: 1000 bytes in 1.11836 usec on average / 894.166 MBPS / 894166 per second
-calico_datagram_encrypt: 100 bytes in 0.24781 usec on average / 403.535 MBPS / 4.03535e+06 per second
-calico_datagram_encrypt: 10 bytes in 0.11381 usec on average / 87.8657 MBPS / 8.78657e+06 per second
-calico_datagram_encrypt: 1 bytes in 0.11607 usec on average / 8.61549 MBPS / 8.61549e+06 per second
+Running test 9 : Benchmark Encrypt()
+calico_datagram_encrypt: 10000 bytes in 15.8626 usec on average / 630.415 MBPS / 63041.5 per second
+calico_datagram_encrypt: 1000 bytes in 1.81763 usec on average / 550.167 MBPS / 550167 per second
+calico_datagram_encrypt: 100 bytes in 0.3458 usec on average / 289.184 MBPS / 2.89184e+06 per second
+calico_datagram_encrypt: 10 bytes in 0.1906 usec on average / 52.4659 MBPS / 5.24659e+06 per second
+calico_datagram_encrypt: 1 bytes in 0.11954 usec on average / 8.3654 MBPS / 8.3654e+06 per second
 +++ Test passed.
 
-Running test 7 : Benchmark Decrypt() Rejection
-calico_datagram_decrypt: drops 10000 corrupted bytes in 10.4301 usec on average / 958.76 MBPS / 95876 per second
-calico_datagram_decrypt: drops 1000 corrupted bytes in 1.03877 usec on average / 962.677 MBPS / 962677 per second
-calico_datagram_decrypt: drops 100 corrupted bytes in 0.12755 usec on average / 784.006 MBPS / 7.84006e+06 per second
-calico_datagram_decrypt: drops 10 corrupted bytes in 0.04788 usec on average / 208.855 MBPS / 2.08855e+07 per second
-calico_datagram_decrypt: drops 1 corrupted bytes in 0.04111 usec on average / 24.325 MBPS / 2.4325e+07 per second
+Running test 10 : Benchmark Decrypt() Rejection
+calico_datagram_decrypt: drops 10000 corrupted bytes in 8.82259 usec on average / 1133.45 MBPS / 113345 per second
+calico_datagram_decrypt: drops 1000 corrupted bytes in 0.89105 usec on average / 1122.27 MBPS / 1.12227e+06 per second
+calico_datagram_decrypt: drops 100 corrupted bytes in 0.1345 usec on average / 743.494 MBPS / 7.43494e+06 per second
+calico_datagram_decrypt: drops 10 corrupted bytes in 0.04306 usec on average / 232.234 MBPS / 2.32234e+07 per second
+calico_datagram_decrypt: drops 1 corrupted bytes in 0.03584 usec on average / 27.9018 MBPS / 2.79018e+07 per second
 +++ Test passed.
 
-Running test 8 : Benchmark Decrypt() Accept
-calico_datagram_decrypt: 10000 bytes in 19.0175 usec on average / 525.833 MBPS / 52583.3 per second
-calico_datagram_decrypt: 1000 bytes in 2.3343 usec on average / 428.394 MBPS / 428394 per second
-calico_datagram_decrypt: 100 bytes in 0.56173 usec on average / 178.021 MBPS / 1.78021e+06 per second
-calico_datagram_decrypt: 10 bytes in 0.27152 usec on average / 36.8297 MBPS / 3.68297e+06 per second
-calico_datagram_decrypt: 1 bytes in 0.25803 usec on average / 3.87552 MBPS / 3.87552e+06 per second
+Running test 11 : Benchmark Decrypt() Accept
+calico_datagram_decrypt: 10000 bytes in 15.8109 usec on average / 632.475 MBPS / 63247.5 per second
+calico_datagram_decrypt: 1000 bytes in 1.8493 usec on average / 540.745 MBPS / 540745 per second
+calico_datagram_decrypt: 100 bytes in 0.48162 usec on average / 207.633 MBPS / 2.07633e+06 per second
+calico_datagram_decrypt: 10 bytes in 0.24286 usec on average / 41.176 MBPS / 4.1176e+06 per second
+calico_datagram_decrypt: 1 bytes in 0.22032 usec on average / 4.53885 MBPS / 4.53885e+06 per second
 +++ Test passed.
 ~~~
 
@@ -212,30 +212,149 @@ host for decryption.  It is flexible in that the overhead can be stored in
 any way the user desires.  Encrypted data is the same length as decrypted
 data and can be encrypted in-place.
 
-The overhead format:
+The overhead format varies based on whether it is in Stream or Datagram mode.
+
+Datagram mode overhead format:
 
 ~~~
 	| <-- earlier bytes  later bytes ->|
-	(00 01 02) (03 04 05 06 07 08 09 0a)
-	    AD            MAC tag
+	(00 01 02 03 04 05 06 07) (08 09 0a)
+	         MAC tag            IV | R
 
-	AD (Associated Data) (3 bytes):
-		IV = Truncated IV (high 23 bits)
-		R = Rekey ratchet flag bit (1 bit), stored in the least significant bit.
 	MAC (Message Authenticate Code) tag (8 bytes):
 		Tag that authenticates both the encrypted message and the associated data.
+	IV | R (3 bytes):
+		IV = Truncated IV (high 23 bits)
+			The full 64-bit IV is the "additional data".
+		R = Rekey ratchet flag bit (1 bit), stored in the least significant bit.
+			Used to select the key used.
 ~~~
+
+Stream mode overhead format:
+
+~~~
+	| <--      bytes      ->|
+	(00 01 02 03 04 05 06 07)
+	        MAC tag | R
+
+	MAC (Message Authenticate Code) tag (63 high bits):
+		Tag that authenticates both the encrypted message and the associated data.
+	R = Rekey ratchet flag bit (1 low bit), stored in the least significant bit.
+		Used to select the key used.
+~~~
+
+#### Forward Secrecy through Rekeying
+
+The advantage of the form of rekeying used in this library is that it provides
+forward secrecy for long-lived connections, without needing to involve the key
+agreement mechanism of the protocol.
+
+This scheme assumes that both sides are sending packets back and forth.  This
+rekeying scheme does not work if data is only ever sent but not received back
+from the other side, because there is no way to verify that the receiver is
+kept in synch.  If encrypted messages are only sent but never received, then
+the rekeying will never happen.  This is to avoid causing data loss for UDP+TCP
+dual streams where the transmitter sends UDP data infrequently.  To enable
+rekeying, have the quiet side transmit an encrypted packet at about the rate
+that the rekeying should happen.
+
+Older protocols like TLS used rekeying to strengthen keys on the principle that
+keys would get weaker after consistent use.  With 256-bit ciphers this is no
+longer an issue.  So the purpose of this rekeying is not to strengthen keys but
+to provide forward secrecy.
+
+This system is designed for smooth synchronization that does not lose data.  It
+uses just one bit of overhead, stolen from extra bits of the IV field or MAC tag,
+so adding rekeying does not have any real disadvantages.
+
+Rekeying happens at most once every 2 minutes.  This is a fixed constant in the
+code, which can be adjusted if needed.
+
+For synchronization, the CALICO_INITIATOR starts the rekey process and the
+CALICO_RESPONDER will acknowledge the rekeying.  The communication happens via
+a single bit called the "Ratchet bit."  See the Overhead Format section above
+for where it is located based on Stream/Datagram mode.
+
+For smooth synchronization, both the initiator and the responder keep two
+versions of the remote key: The "active" key and the "inactive" key.
+The "inactive" key is always a hash of the "active" key.
+`K_inactive = H(K_active)`, where `H()` is the BLAKE2 hash function.
+
+The active key flips between locations numbered 0 and 1.  Each time the active
+key flips, the old key is erased by the new inactive key, hence forward secrecy.
+
+When an encrypted message is sent, the transmitter can select which of these
+keys the receiver must use for decryption by toggling the Ratchet bit in the
+message overhead.  At the same time, toggling the Ratchet bit indicates to the
+receiver that rekeying has occurred.
+
+Recall that there are two Calico keys: ChaCha (256 bits) and MAC (128 bits).
+To be clear, these are treated as one long 48 byte key and are updated together.
+On startup the key corresponding to R = 0 is the encryption key for the
+remote host (K).  The key corresponding to R = 1 is H(K), where H() is the BLAKE2
+hash function.
+
+Debouncing is employed to ensure that when Datagram messages arrive out of
+order, the receiver does not ratchet the decryption key too fast.  Since both
+sides of the communication know that the initiator will not ratchet the key
+faster than once every 2 minutes, the receiver will wait 1 minute after a
+ratchet bit toggle before erasing the old key and preventing out-of-order
+messages from being received.
+
+Note that the ratchet bit is not included in the "Additional Data" that is
+authenticated by the MAC tag in each message.  Instead since the ratchet bit
+selects which key to use for the MAC, it is also authenticated.
+
+Reactions such as rekeying only happen after the message is authenticated.
+
+Rekeying is the most complex part of Calico, despite that it only involves one
+overhead bit.  A short example of the process is provided to help clarify:
+
+##### Rekeying Example
+
+Both initiator and responder are keyed.  Initially the active outgoing keys
+for both sides are set to key number 0.  Key number 1 is the inactive key and
+is set to `H(K_active)`, where `H()` is the BLAKE2 hash function.  These are
+48-byte keys, including the encryption and MAC keys.
+
+After 2 minutes the initiator starts the rekey process by flipping its Ratchet
+bit during encryption.  There is only one copy of the encryption key, so as
+soon as the Ratchet bit is flipped, the encryption key is replaced by the
+BLAKE2 hash of that key.  Old data is now safe from key compromise on the
+initiator side after this point.
+
+The responder receives the packet, and it uses the inactive key to authenticate
+and decrypt the packet.  After authentication is verified, the responder
+immediately ratchets its own encryption key, replacing the key by its hash
+and flipping its Ratchet bit.  The responder will start a 1 minute timer to
+ratchet its decryption keys, allowing time for out-of-order messages to arrive
+from before the key ratcheting.
+
+Some time later the responder will encrypt a packet to send back to the
+initiator.  The initiator will authenticate the packet and note that the
+responder has ratcheted its key.  The initiator will also start a 1 minute
+timer to ratchet its decryption keys.
+
+Encrypted messages are sent by both sides using the ratcheted encryption keys
+on each side.
+
+The timer on each side will finish, and each side will ratchet its decryption
+keys.  Now the old key is completely erased by both sides.
+
+After about another minute the initiator will rekey again.
+
 
 ## Discussion
 
 The project goals are (in order):
 
-+ Avoiding Timing Side-Channels
-+ Avoiding Freed Memory Side-Channels
-+ Simplicity
++ Avoiding Timing Side-Channels (use good algorithms)
++ Avoiding Stale Memory Side-Channels (clean up the stack)
++ Forward Secrecy (rekeying)
++ Simplicity (KISS)
 + Speed
-+ Low Overhead
-+ Low Memory Size of per-Connection State
++ Low Overhead (low bandwidth)
++ Low Memory Size of per-Connection State (more connections per server)
 
 Calico attempts to use existing, trusted primitives in efficient and simple combination
 to avoid misusing or introducing new buggy code.
@@ -311,6 +430,13 @@ During decryption a 1024-bit window is used to keep track of accepted IVs.  This
 was chosen because it is the IPsec largest window allowed.  But it may be worth looking
 into expanding this window for high-speed transfers in the future.
 
+#### Rekeying
+
+The rekeying method through bit-flagged ratcheting seems to have the one disadvantage
+that one-way channels do not benefit from rekeying.  Ensuring that at least one packet
+is sent from the quiet side about once every 2 minutes should ensure that rekeying
+happens in this case.
+
 #### SipHash-2-4 versus Poly1305 versus VMAC
 
 Choosing which MAC algorithm to use turned out to be one of the more difficult challenges
@@ -347,42 +473,6 @@ leading to slower short-message performance.
 
 After weighing all three options over several months, SipHash-2-4 was selected as the
 MAC for Calico.
-
-#### Rekeying
-
-Calico supports periodic rekeying, initiated by the initiator.
-The advantage of this form of rekeying is to provide forward secrecy for
-long-lived connections, rather than to strengthen keys.
-
-Both the initiator and the responder keep two copies of the remote keys.
-There are two keys: ChaCha (256 bits) and MAC (128 bits).  To be clear,
-these are treated as one long 48 byte key and are updated together.
-Initially the key corresponding to R = 0 is the initial encryption key for
-the remote host (Kr).  The key corresponding to R = 1 is H(Kr).
-
-The initiator and responder can each ratchet its own encryption key.
-This is done by flipping the R bit in the associated data of the message.
-It can immediately start sending data under the new key.
-When the responder sees a ratchet (R bit flipped) from the initiator, then
-it will immediately ratchet its own key.
-
-When the responder sees an R bit flip, it will immediately ratchet its key
-by running K' = H(K), where H = BLAKE2 and K = the local encryption key.
-Any future outgoing encrypted messages will use the new key K'.  Note that
-this erases the previous key K and replaces it with K'.  It then costs over
-2^128 hash operations to run the ratchet backwards, so the security of the
-scheme is maintained: Previous outgoing messages can no longer be
-decrypted if the keys are compromised, providing forward secrecy.
-
-The initiator and responder both use the keys indicated by R when new
-datagrams arrive to authenticate and decrypt.  When the remote host sends a
-valid datagram for ~R, then the receiver starts a timer counting down to
-updating the R key with K[R] = H(K[~R]).  The timer is initially set to X
-seconds.  The timer is reset if a valid datagram for R is received.  This
-prevents the ratchet from losing data when it arrives out of order.
-
-The initiator will ratchet no more often than 2X seconds, where X is roughly
-1 minute.  This prevents desynchronization.
 
 
 ## References

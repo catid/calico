@@ -615,6 +615,8 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 	// Get deccryption/MAC key
 	const char *dec_key = key->in_key[ratchet_bit];
 
+	//// No actions may be taken here until the message is authenticated!
+
 	// Authenticate the message
 	if (!check_auth(dec_key, iv, auth_shift, ciphertext, bytes, tag)) {
 		CAT_LOG(cout << "calico_decrypt: Message authentication failed" << endl);
