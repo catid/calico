@@ -26,7 +26,7 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 
-//#define CAT_VERBOSE_CALICO
+#define CAT_VERBOSE_CALICO
 
 #include "calico.h"
 
@@ -473,6 +473,7 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 
 			// Ratchet to next key, erasing the old key
 			if (ratchet_key(key->out_key, key->out_key)) {
+				CAT_LOG(cout << "calico_encrypt: Ratcheting failed" << endl);
 				return -1;
 			}
 		}
@@ -618,11 +619,14 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 	if (ratchet_bit ^ key->in.active) {
 		// If not already ratcheting,
 		if (!key->in.ratchet_time) {
+			CAT_LOG(cout << "calico_decrypt: Detected a key ratchet from remote host" << endl);
+
 			// Set a timer until the key is erased
 			key->in.ratchet_time = m_clock.msec();
 
 			// If responder,
 			if (state->role == CALICO_RESPONDER) {
+				CAT_LOG(cout << "calico_decrypt: Ratcheting key since this is the responder" << endl);
 				// This is our trigger to ratchet our encryption key.
 
 				// Flip the active key bit
@@ -636,8 +640,13 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 
 	decrypt(iv, dec_key, ciphertext, bytes);
 
-	// Accept this IV
-	antireplay_accept(&state->window, iv);
+	if (overhead_size == CALICO_STREAM_OVERHEAD) {
+		// Accept this IV
+		antireplay_accept(&state->window, iv);
+	} else {
+		// Update IV
+		key->in.iv = iv + 1;
+	}
 
 	CAT_LOG(cout << "calico_decrypt: Message decrypted successfully" << endl);
 

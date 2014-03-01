@@ -75,6 +75,65 @@ void DataIntegrityTest() {
 }
 
 /*
+ * Use stream API
+ */
+void StreamModeTest() {
+	char data[10000];
+	char orig[10000];
+	char overhead[CALICO_STREAM_OVERHEAD];
+
+	Abyssinian prng;
+	prng.Initialize(m_clock.msec(), Clock::cycles());
+
+	for (int ii = 0; ii < 10; ++ii) {
+		u32 key[8];
+
+		for (int jj = 0; jj < 8; ++jj) {
+			key[jj] = prng.Next();
+		}
+
+		calico_stream_only x, y;
+
+		assert(!calico_key(&x, sizeof(x), CALICO_INITIATOR, key, sizeof(key)));
+		assert(!calico_key(&y, sizeof(y), CALICO_RESPONDER, key, sizeof(key)));
+
+		u32 *data_ptr = reinterpret_cast<u32*>( orig );
+
+		for (int messages = 0; messages < 100; ++messages) {
+			// Send x -> y
+
+			int len = prng.Next() % 10000;
+
+			for (int jj = 0; jj < (len + 3) / 4; ++jj) {
+				data_ptr[jj] = prng.Next();
+			}
+
+			assert(!calico_encrypt(&x, data, orig, len, overhead, sizeof(overhead)));
+			assert(calico_encrypt((calico_state*)&x, data, orig, len, overhead, CALICO_DATAGRAM_OVERHEAD));
+
+			assert(calico_decrypt(&y, data, len, overhead, CALICO_DATAGRAM_OVERHEAD));
+			assert(!calico_decrypt(&y, data, len, overhead, sizeof(overhead)));
+			assert(SecureEqual(data, orig, len));
+
+			// Send y -> x
+
+			len = prng.Next() % 10000;
+
+			for (int jj = 0; jj < (len + 3) / 4; ++jj) {
+				data_ptr[jj] = prng.Next();
+			}
+
+			assert(!calico_encrypt(&y, data, orig, len, overhead, sizeof(overhead)));
+			assert(calico_encrypt((calico_state*)&y, data, orig, len, overhead, CALICO_DATAGRAM_OVERHEAD));
+
+			assert(calico_decrypt(&x, data, len, overhead, CALICO_DATAGRAM_OVERHEAD));
+			assert(!calico_decrypt(&x, data, len, overhead, sizeof(overhead)));
+			assert(SecureEqual(data, orig, len));
+		}
+	}
+}
+
+/*
  * Test where each side is using a different key
  */
 void WrongKeyTest() {
@@ -375,63 +434,6 @@ void ReplayMACTest() {
 	overhead_iv_mod[2] = (u8)(trunc_iv >> 8);
 
 	assert(calico_decrypt(&y, data_iv0, 32, overhead_iv_mod, sizeof(overhead_iv_mod)));
-}
-
-/*
- * Use stream API
- */
-void StreamModeTest() {
-	char data[10000];
-	char orig[10000];
-	char overhead[CALICO_STREAM_OVERHEAD];
-
-	Abyssinian prng;
-	prng.Initialize(m_clock.msec(), Clock::cycles());
-
-	for (int ii = 0; ii < 10; ++ii) {
-		u32 key[8];
-
-		for (int jj = 0; jj < 8; ++jj) {
-			key[jj] = prng.Next();
-		}
-
-		calico_stream_only x, y;
-
-		assert(!calico_key(&x, sizeof(x), CALICO_INITIATOR, key, sizeof(key)));
-		assert(!calico_key(&y, sizeof(y), CALICO_RESPONDER, key, sizeof(key)));
-
-		u32 *data_ptr = reinterpret_cast<u32*>( orig );
-
-		for (int messages = 0; messages < 100; ++messages) {
-			// Send x -> y
-
-			int len = prng.Next() % 10000;
-
-			for (int jj = 0; jj < (len + 3) / 4; ++jj) {
-				data_ptr[jj] = prng.Next();
-			}
-
-			assert(!calico_encrypt(&x, data, orig, len, overhead, sizeof(overhead)));
-			assert(calico_encrypt((calico_state*)&x, data, orig, len, overhead, CALICO_DATAGRAM_OVERHEAD));
-
-			assert(!calico_decrypt(&y, data, len, overhead, sizeof(overhead)));
-			assert(SecureEqual(data, orig, len));
-
-			// Send y -> x
-
-			len = prng.Next() % 10000;
-
-			for (int jj = 0; jj < (len + 3) / 4; ++jj) {
-				data_ptr[jj] = prng.Next();
-			}
-
-			assert(!calico_encrypt(&y, data, orig, len, overhead, sizeof(overhead)));
-			assert(calico_encrypt((calico_state*)&y, data, orig, len, overhead, CALICO_DATAGRAM_OVERHEAD));
-
-			assert(!calico_decrypt(&x, data, len, overhead, sizeof(overhead)));
-			assert(SecureEqual(data, orig, len));
-		}
-	}
 }
 
 /*
