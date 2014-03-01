@@ -38,7 +38,8 @@ typedef struct _antireplay_state {
 	static const int BITMAP_BITS = 1024; // Good for file transfer rates
 	static const int BITMAP_WORDS = BITMAP_BITS / 64;
 
-	u64 datagram_local, datagram_remote;
+	// Newest IV
+	u64 newest_iv;
 
 	// Anti-replay sliding window
 	u64 bitmap[BITMAP_WORDS];

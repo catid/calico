@@ -31,8 +31,7 @@ using namespace cat;
 
 void cat::antireplay_init(antireplay_state *S)
 {
-	S->datagram_local = 0;
-	S->datagram_remote = 0;
+	S->newest_iv = 0;
 
 	CAT_OBJCLR(S->bitmap);
 }
@@ -40,7 +39,7 @@ void cat::antireplay_init(antireplay_state *S)
 bool cat::antireplay_check(antireplay_state *S, u64 remote_iv)
 {
 	// Check how far in the past this IV is
-	int delta = (int)(S->datagram_remote - remote_iv);
+	int delta = (int)(S->newest_iv - remote_iv);
 
 	// If it is in the past,
 	if (delta >= 0)
@@ -59,7 +58,7 @@ bool cat::antireplay_check(antireplay_state *S, u64 remote_iv)
 void cat::antireplay_accept(antireplay_state *S, u64 remote_iv)
 {
 	// Check how far in the past/future this IV is
-	int delta = (int)(remote_iv - S->datagram_remote);
+	int delta = (int)(remote_iv - S->newest_iv);
 	u64 *bitmap = S->bitmap;
 
 	// If it is in the future,
@@ -104,7 +103,7 @@ void cat::antireplay_accept(antireplay_state *S, u64 remote_iv)
 		}
 
 		// Only update the IV if the MAC was valid and the new IV is in the future
-		S->datagram_remote = remote_iv;
+		S->newest_iv = remote_iv;
 	}
 	else // Process an out-of-order packet
 	{
