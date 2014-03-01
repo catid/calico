@@ -341,7 +341,10 @@ on each side.
 The timer on each side will finish, and each side will ratchet its decryption
 keys.  Now the old key is completely erased by both sides.
 
-After about another minute the initiator will rekey again.
+After about another minute the initiator will rekey again as soon as it notices
+that the responder had flipped its Ratchet bit.  This prevents the initiator
+from rekeying too fast: The responder's Ratchet bit flip serves as an
+acknowledgement to the initiator enabling it to rekey again.
 
 
 ## Discussion
