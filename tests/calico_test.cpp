@@ -128,6 +128,7 @@ void StreamModeTest() {
 
 			assert(calico_decrypt(&x, data, len, overhead, CALICO_DATAGRAM_OVERHEAD));
 			assert(!calico_decrypt(&x, data, len, overhead, sizeof(overhead)));
+
 			assert(SecureEqual(data, orig, len));
 		}
 	}

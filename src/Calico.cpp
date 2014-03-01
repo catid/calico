@@ -26,7 +26,7 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 
-#define CAT_VERBOSE_CALICO
+//#define CAT_VERBOSE_CALICO
 
 #include "calico.h"
 
@@ -556,17 +556,17 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 		handle_ratchet(key);
 	}
 
-	const u64 *overhead_mac = reinterpret_cast<const u64 *>( overhead );
+	const u64 *overhead_tag = reinterpret_cast<const u64 *>( overhead );
 
 	// Grab the MAC tag
-	const u64 tag = getLE(*overhead_mac);
+	const u64 tag = getLE(*overhead_tag);
 
 	u32 ratchet_bit;
 	u64 iv;
 	int auth_shift;
 
 	if (overhead_size == CALICO_DATAGRAM_OVERHEAD) {
-		const u8 *overhead_iv = reinterpret_cast<const u8 *>( overhead_mac + 1 );
+		const u8 *overhead_iv = reinterpret_cast<const u8 *>( overhead_tag + 1 );
 
 		// Grab the obfuscated IV
 		u32 trunc_iv = ((u32)overhead_iv[2] << 8) | ((u32)overhead_iv[1] << 16) | (u32)overhead_iv[0];
@@ -598,7 +598,7 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 		iv = key->in.iv;
 
 		// Extract the ratchet bit
-		ratchet_bit = tag & 1;
+		ratchet_bit = (u32)tag & 1;
 
 		CAT_LOG(cout << "calico_decrypt: Decrypting stream with IV = " << iv << " and ratchet = " << ratchet_bit << endl);
 
@@ -640,7 +640,7 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 
 	decrypt(iv, dec_key, ciphertext, bytes);
 
-	if (overhead_size == CALICO_STREAM_OVERHEAD) {
+	if (overhead_size == CALICO_DATAGRAM_OVERHEAD) {
 		// Accept this IV
 		antireplay_accept(&state->window, iv);
 	} else {
