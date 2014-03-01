@@ -398,8 +398,6 @@ void BenchmarkDecryptSuccess() {
 void ReplayMACTest() {
 	char key[32] = {0};
 
-	static const u32 IV_FUZZ = 0x286AD7;
-
 	calico_stream_only x, y;
 	char data_iv0[32] = {0};
 	char overhead_iv0[CALICO_STREAM_OVERHEAD];
@@ -421,8 +419,6 @@ void ReplayMACTest() {
 
 	memcpy(overhead_iv_mod, overhead_iv0, sizeof(overhead_iv_mod));
 
-	const u64 tag = *(u64*)(overhead_iv_mod);
-
 	assert(calico_decrypt(&y, data_iv0, 32, overhead_iv_mod, sizeof(overhead_iv_mod)));
 }
 
@@ -430,7 +426,44 @@ void ReplayMACTest() {
  * Test for key ratcheting
  */
 void RatchetKeyTest() {
-	// TODO
+	cout << "This is testing the forward secrecy feature of Calico.  Normally the rekeying interval is two minutes.  But for this test the Makefile has changed the rekeying interval to 1 second.  Turning on CAT_VERBOSE_CALICO helps visualize what is going on.  Note that in this protocol the client initiates the key ratcheting on its timer and the server ratchets in acknowledgement." << endl;
+
+	char key[32] = {9};
+	calico_state x, y;
+
+	assert(!calico_key(&x, sizeof(x), CALICO_INITIATOR, key, sizeof(key)));
+	assert(!calico_key(&y, sizeof(y), CALICO_RESPONDER, key, sizeof(key)));
+
+	char orig[32] = {0};
+
+	u32 t0 = m_clock.msec();
+
+	while ((u32)(m_clock.msec() - t0) < 20000) {
+		char c2s_data[32] = {0};
+		char c2s_over[CALICO_STREAM_OVERHEAD];
+		char s2c_data[32] = {0};
+		char s2c_over[CALICO_STREAM_OVERHEAD];
+
+		cout << "- c2s transmit" << endl;
+		assert(!calico_encrypt(&x, c2s_data, c2s_data, 32, c2s_over, sizeof(c2s_over)));
+
+		Clock::sleep(137);
+
+		cout << "-- server receiving" << endl;
+		assert(!calico_decrypt(&y, c2s_data, 32, c2s_over, sizeof(c2s_over)));
+		assert(SecureEqual(c2s_data, orig, sizeof(c2s_data)));
+
+		cout << "- s2c transmit" << endl;
+		assert(!calico_encrypt(&y, s2c_data, s2c_data, 32, s2c_over, sizeof(s2c_over)));
+
+		Clock::sleep(122);
+
+		cout << "-- client receiving" << endl;
+		assert(!calico_decrypt(&x, s2c_data, 32, s2c_over, sizeof(s2c_over)));
+		assert(SecureEqual(s2c_data, orig, sizeof(s2c_data)));
+
+		Clock::sleep(15);
+	}
 }
 
 /*

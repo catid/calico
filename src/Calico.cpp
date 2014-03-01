@@ -108,7 +108,7 @@ static const u32 RATCHET_REMOTE_TIMEOUT = 60 * 1000; // 1 minute in milliseconds
 
 #ifndef RATCHET_PERIOD
 // Minimum time between rekeying
-static const u32 RATCHET_PERIOD = 2 * RATCHET_PERIOD; // 2 minutes in milliseconds
+static const u32 RATCHET_PERIOD = 2 * RATCHET_REMOTE_TIMEOUT; // 2 minutes in milliseconds
 #endif
 
 // Constants to indicate the Calico state object is keyed
@@ -200,6 +200,8 @@ static u64 auth_encrypt(const char key[48], u64 iv_raw, const void *from,
 static void handle_ratchet(Key *key) {
 	// If ratchet time exceeded,
 	if ((u32)(m_clock.msec() - key->in.ratchet_time) > RATCHET_REMOTE_TIMEOUT) {
+		CAT_LOG(cout << "--Ratcheting key!" << endl);
+
 		// Get active and inactive key
 		const u32 active_key = key->in.active;
 		const u32 inactive_key = active_key ^ 1;
