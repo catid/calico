@@ -27,7 +27,7 @@ Calico does not consume any randomness to operate.
 
 ## Benchmarks
 
-##### libcalico.a on Macbook Air (1.7 GHz Core i5-2557M Sandy Bridge, July 2011):
+##### libcalico.a on iMac (2.7 GHz Core i5-2500S Sandy Bridge, June 2011):
 
 Output of `make test`:
 
@@ -37,27 +37,27 @@ Benchmark: Initialize() in 1.14809 usec on average / 871012 per second
 +++ Test passed.
 
 Running test 9 : Benchmark Encrypt()
-calico_datagram_encrypt: 10000 bytes in 15.8626 usec on average / 630.415 MBPS / 63041.5 per second
-calico_datagram_encrypt: 1000 bytes in 1.81763 usec on average / 550.167 MBPS / 550167 per second
-calico_datagram_encrypt: 100 bytes in 0.3458 usec on average / 289.184 MBPS / 2.89184e+06 per second
-calico_datagram_encrypt: 10 bytes in 0.1906 usec on average / 52.4659 MBPS / 5.24659e+06 per second
-calico_datagram_encrypt: 1 bytes in 0.11954 usec on average / 8.3654 MBPS / 8.3654e+06 per second
+calico_encrypt: 10000 bytes in 15.8626 usec on average / 630.415 MBPS / 63041.5 per second
+calico_encrypt: 1000 bytes in 1.81763 usec on average / 550.167 MBPS / 550167 per second
+calico_encrypt: 100 bytes in 0.3458 usec on average / 289.184 MBPS / 2.89184e+06 per second
+calico_encrypt: 10 bytes in 0.1906 usec on average / 52.4659 MBPS / 5.24659e+06 per second
+calico_encrypt: 1 bytes in 0.11954 usec on average / 8.3654 MBPS / 8.3654e+06 per second
 +++ Test passed.
 
 Running test 10 : Benchmark Decrypt() Rejection
-calico_datagram_decrypt: drops 10000 corrupted bytes in 8.82259 usec on average / 1133.45 MBPS / 113345 per second
-calico_datagram_decrypt: drops 1000 corrupted bytes in 0.89105 usec on average / 1122.27 MBPS / 1.12227e+06 per second
-calico_datagram_decrypt: drops 100 corrupted bytes in 0.1345 usec on average / 743.494 MBPS / 7.43494e+06 per second
-calico_datagram_decrypt: drops 10 corrupted bytes in 0.04306 usec on average / 232.234 MBPS / 2.32234e+07 per second
-calico_datagram_decrypt: drops 1 corrupted bytes in 0.03584 usec on average / 27.9018 MBPS / 2.79018e+07 per second
+calico_decrypt: drops 10000 corrupted bytes in 8.82259 usec on average / 1133.45 MBPS / 113345 per second
+calico_decrypt: drops 1000 corrupted bytes in 0.89105 usec on average / 1122.27 MBPS / 1.12227e+06 per second
+calico_decrypt: drops 100 corrupted bytes in 0.1345 usec on average / 743.494 MBPS / 7.43494e+06 per second
+calico_decrypt: drops 10 corrupted bytes in 0.04306 usec on average / 232.234 MBPS / 2.32234e+07 per second
+calico_decrypt: drops 1 corrupted bytes in 0.03584 usec on average / 27.9018 MBPS / 2.79018e+07 per second
 +++ Test passed.
 
 Running test 11 : Benchmark Decrypt() Accept
-calico_datagram_decrypt: 10000 bytes in 15.8109 usec on average / 632.475 MBPS / 63247.5 per second
-calico_datagram_decrypt: 1000 bytes in 1.8493 usec on average / 540.745 MBPS / 540745 per second
-calico_datagram_decrypt: 100 bytes in 0.48162 usec on average / 207.633 MBPS / 2.07633e+06 per second
-calico_datagram_decrypt: 10 bytes in 0.24286 usec on average / 41.176 MBPS / 4.1176e+06 per second
-calico_datagram_decrypt: 1 bytes in 0.22032 usec on average / 4.53885 MBPS / 4.53885e+06 per second
+calico_decrypt: 10000 bytes in 15.8109 usec on average / 632.475 MBPS / 63247.5 per second
+calico_decrypt: 1000 bytes in 1.8493 usec on average / 540.745 MBPS / 540745 per second
+calico_decrypt: 100 bytes in 0.48162 usec on average / 207.633 MBPS / 2.07633e+06 per second
+calico_decrypt: 10 bytes in 0.24286 usec on average / 41.176 MBPS / 4.1176e+06 per second
+calico_decrypt: 1 bytes in 0.22032 usec on average / 4.53885 MBPS / 4.53885e+06 per second
 +++ Test passed.
 ~~~
 
@@ -125,6 +125,10 @@ libcat/SipHash.*
 libcat/Platform.hpp
 libcat/Config.hpp
 
+blake2/ref/blake2.h
+blake2/ref/blake2-impl.h
+blake2/ref/blake2-ref.c
+
 chacha-opt/chacha.h
 chacha-opt/chacha.c
 
@@ -171,14 +175,14 @@ used for each message as this can be inferred implicitly by the order in which t
 is received.  3 bytes are saved and only the MAC tag is transmitted as overhead.
 So overall stream mode overhead is 8 bytes.
 
-To save roughly 150 bytes, the stream mode can be selected exclusively by using the
-`calico_key_stream_only` function.  In this mode the Calico state object does not include
+To save 312 bytes, the stream mode can be selected exclusively by using the
+`calico_stream_only` state object.  In this mode the Calico state object does not include
 memory for the datagram IVs nor does it include memory for the bit vector used to avoid
 replay attacks.
 
 #### Encryption
 
-When a user calls `calico_datagram_encrypt` to encrypt a message, it reads the next IV to
+When a user calls `calico_encrypt` to encrypt a message, it reads the next IV to
 send and verifies that it is not out of IVs to use.  It then encrypts the plaintext of
 the message with ChaCha14 and the local datagram key.  A SipHash-2-4 MAC tag is generated
 for the encrypted ciphertext of the message.  The IV and tag are stored in the overhead
@@ -196,7 +200,7 @@ into the low 8 bytes of the MAC key.  The resulting combined key is then used as
 
 #### Decryption
 
-Message decryption and authentication is performed by `calico_datagram_decrypt`.
+Message decryption and authentication is performed by `calico_decrypt`.
 It reads the 24-bit truncated IV from the overhead and uses the last accepted IV to
 expand it back to the full 64-bit IV value.  The IV is checked to make sure it was not
 previous accepted, to avoid replay attacks.  Using the IV and remote datagram key it
@@ -294,7 +298,7 @@ On startup the key corresponding to R = 0 is the encryption key for the
 remote host (K).  The key corresponding to R = 1 is H(K), where H() is the BLAKE2
 hash function.
 
-Debouncing is employed to ensure that when Datagram messages arrive out of
+Debouncing is employed to ensure that when datagram messages arrive out of
 order, the receiver does not ratchet the decryption key too fast.  Since both
 sides of the communication know that the initiator will not ratchet the key
 faster than once every 2 minutes, the receiver will wait 1 minute after a

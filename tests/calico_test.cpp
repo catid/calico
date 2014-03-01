@@ -298,7 +298,7 @@ void BenchmarkEncrypt() {
 
 		double mbps = bytes * fps / 1000000.0;
 
-		cout << "calico_datagram_encrypt: " << bytes << " bytes in " << adt << " usec on average / " << mbps << " MBPS / " << fps << " per second" << endl;
+		cout << "calico_encrypt: " << bytes << " bytes in " << adt << " usec on average / " << mbps << " MBPS / " << fps << " per second" << endl;
 	}
 }
 
@@ -334,7 +334,7 @@ void BenchmarkDecryptFail() {
 
 		double mbps = bytes * fps / 1000000.0;
 
-		cout << "calico_datagram_decrypt: drops " << bytes << " corrupted bytes in " << adt << " usec on average / " << mbps << " MBPS / " << fps << " per second" << endl;
+		cout << "calico_decrypt: drops " << bytes << " corrupted bytes in " << adt << " usec on average / " << mbps << " MBPS / " << fps << " per second" << endl;
 	}
 }
 
@@ -383,7 +383,7 @@ void BenchmarkDecryptSuccess() {
 
 		double mbps = bytes * fps / 1000000.0;
 
-		cout << "calico_datagram_decrypt: " << bytes << " bytes in " << adt << " usec on average / " << mbps << " MBPS / " << fps << " per second" << endl;
+		cout << "calico_decrypt: " << bytes << " bytes in " << adt << " usec on average / " << mbps << " MBPS / " << fps << " per second" << endl;
 	}
 }
 
