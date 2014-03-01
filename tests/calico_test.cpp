@@ -400,13 +400,13 @@ void ReplayMACTest() {
 
 	static const u32 IV_FUZZ = 0x286AD7;
 
-	calico_state x, y;
+	calico_stream_only x, y;
 	char data_iv0[32] = {0};
-	char overhead_iv0[CALICO_DATAGRAM_OVERHEAD];
+	char overhead_iv0[CALICO_STREAM_OVERHEAD];
 	char data_iv1[32] = {1};
-	char overhead_iv1[CALICO_DATAGRAM_OVERHEAD];
+	char overhead_iv1[CALICO_STREAM_OVERHEAD];
 	char plaintext[32];
-	char overhead_iv_mod[CALICO_DATAGRAM_OVERHEAD];
+	char overhead_iv_mod[CALICO_STREAM_OVERHEAD];
 
 	assert(!calico_key(&x, sizeof(x), CALICO_INITIATOR, key, sizeof(key)));
 	assert(!calico_key(&y, sizeof(y), CALICO_RESPONDER, key, sizeof(key)));
@@ -421,20 +421,16 @@ void ReplayMACTest() {
 
 	memcpy(overhead_iv_mod, overhead_iv0, sizeof(overhead_iv_mod));
 
-	const u64 tag = *(u64*)(overhead_iv_mod + 3);
-	const u32 iv = 1;
-
-	// Obfuscate the truncated IV
-	u32 trunc_iv = iv;
-	trunc_iv -= (u32)tag;
-	trunc_iv ^= IV_FUZZ;
-
-	// Store IV and tag
-	overhead_iv_mod[0] = (u8)trunc_iv;
-	overhead_iv_mod[1] = (u8)(trunc_iv >> 16);
-	overhead_iv_mod[2] = (u8)(trunc_iv >> 8);
+	const u64 tag = *(u64*)(overhead_iv_mod);
 
 	assert(calico_decrypt(&y, data_iv0, 32, overhead_iv_mod, sizeof(overhead_iv_mod)));
+}
+
+/*
+ * Test for key ratcheting
+ */
+void RatchetKeyTest() {
+	// TODO
 }
 
 /*
@@ -516,6 +512,7 @@ TestDescriptor TEST_FUNCTIONS[] = {
 	{ ReplayAttackTest, "Replay Attack" },
 	{ ReplayWindowTest, "Replay Window" },
 	{ ReplayMACTest, "Replay MAC+Ciphertext with new IV test" },
+	{ RatchetKeyTest, "Ratchet key test" },
 
 	{ BenchmarkInitialize, "Benchmark Initialize()" },
 	{ BenchmarkEncrypt, "Benchmark Encrypt()" },

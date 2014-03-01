@@ -56,7 +56,7 @@ example : clean $(calico_example_o) library
 	$(CCPP) $(calico_example_o) $(LIBS) -o example
 	./example
 
-test : CFLAGS += -DUNIT_TEST $(OPTFLAGS)
+test : CFLAGS += -DUNIT_TEST $(OPTFLAGS) -DRATCHET_REMOTE_TIMEOUT=1000
 test : clean $(calico_test_o) library
 	$(CCPP) $(calico_test_o) $(LIBS) -o test
 	./test

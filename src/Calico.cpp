@@ -100,12 +100,16 @@ struct Key {
 	HalfDuplexKey in, out;
 };
 
-// Minimum time between rekeying
-static const u32 RATCHET_PERIOD = 60 * 2 * 1000; // 120 seconds in milliseconds
-
+#ifndef RATCHET_REMOTE_TIMEOUT
 // This is the time after the receiver sees a remote key switch past
 // which the receiver will ratchet the remote key to forget the old one
-static const u32 RATCHET_REMOTE_TIMEOUT = 60 * 1000; // 60 seconds in milliseconds
+static const u32 RATCHET_REMOTE_TIMEOUT = 60 * 1000; // 1 minute in milliseconds
+#endif
+
+#ifndef RATCHET_PERIOD
+// Minimum time between rekeying
+static const u32 RATCHET_PERIOD = 2 * RATCHET_PERIOD; // 2 minutes in milliseconds
+#endif
 
 // Constants to indicate the Calico state object is keyed
 static const u32 FLAG_KEYED_STREAM = 0x6501ccef;
@@ -189,7 +193,7 @@ static u64 auth_encrypt(const char key[48], u64 iv_raw, const void *from,
 	chacha_blocks_impl(&S, (const u8 *)from, (u8 *)to, bytes);
 
 	// Generate MAC tag
-	return siphash24(key + 32, to, bytes, iv_raw);
+	return siphash24(key + 32, to, bytes, iv);
 }
 
 // Helper function to conditionally perform key ratchet on receiver side
