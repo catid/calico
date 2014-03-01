@@ -83,6 +83,7 @@ struct HalfDuplexKey {
 
 	// This is the millisecond timestamp when incoming ratcheting started.
 	// Otherwise it is set to 0 when ratcheting is not in progress
+	// NOTE: This is unused by responder encryption
 	u32 ratchet_time;
 
 	// Next IV
@@ -370,7 +371,7 @@ int calico_key(void *S, int state_size, int role, const void *key, int key_bytes
 
 	// Mark when ratchet happened
 	const u32 msec = m_clock.msec();
-	state->stream.out.ratchet_time = msec;
+	state->stream.out.ratchet_time = msec; // Only used by initiator
 	state->stream.in.ratchet_time = 0;
 
 	// Set active keys
@@ -403,7 +404,7 @@ int calico_key(void *S, int state_size, int role, const void *key, int key_bytes
 		// Note that stream.in.iv is unused
 
 		// Set datagram ratchet time
-		state->dgram.out.ratchet_time = msec;
+		state->dgram.out.ratchet_time = msec; // Only used by initiator
 		state->dgram.in.ratchet_time = 0;
 
 		// Initialize the IV subsystem for datagrams
@@ -470,17 +471,23 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 	// If initiator,
 	if (state->role == CALICO_INITIATOR) {
 		// If it is time to ratchet the key again,
-		if (key->out.active == key->in.active &&
-			(u32)(m_clock.msec() - key->out.ratchet_time) > RATCHET_PERIOD) {
-			CAT_LOG(cout << "calico_encrypt: Ratcheting key" << endl);
+		if (key->out.active == key->in.active) {
+			const u32 msec = m_clock.msec();
 
-			// Flip the active key bit
-			key->out.active ^= 1;
+			if ((u32)(msec - key->out.ratchet_time) > RATCHET_PERIOD) {
+				CAT_LOG(cout << "calico_encrypt: Ratcheting key" << endl);
 
-			// Ratchet to next key, erasing the old key
-			if (ratchet_key(key->out_key, key->out_key)) {
-				CAT_LOG(cout << "calico_encrypt: Ratcheting failed" << endl);
-				return -1;
+				// Ratchet to next key, erasing the old key
+				if (ratchet_key(key->out_key, key->out_key)) {
+					CAT_LOG(cout << "calico_encrypt: Ratcheting failed" << endl);
+					return -1;
+				}
+
+				// Flip the active key bit
+				key->out.active ^= 1;
+
+				// Update base ratchet time to add another delay
+				key->out.ratchet_time = msec;
 			}
 		}
 	}
@@ -630,18 +637,20 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 			CAT_LOG(cout << "calico_decrypt: Detected a key ratchet from remote host" << endl);
 
 			// Set a timer until the key is erased
-			key->in.ratchet_time = m_clock.msec();
+			key->in.ratchet_time = m_clock.msec() | 1; // ensure it is non-zero
 
 			// If responder,
 			if (state->role == CALICO_RESPONDER) {
 				CAT_LOG(cout << "calico_decrypt: Ratcheting key since this is the responder" << endl);
 				// This is our trigger to ratchet our encryption key.
 
+				// Ratchet to next key, erasing the old key
+				if (ratchet_key(key->out_key, key->out_key)) {
+					return -1;
+				}
+
 				// Flip the active key bit
 				key->out.active ^= 1;
-
-				// Ratchet to next key, erasing the old key
-				ratchet_key(key->out_key, key->out_key);
 			}
 		}
 	}
