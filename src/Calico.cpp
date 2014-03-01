@@ -26,6 +26,8 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 
+//#define CAT_VERBOSE_CALICO
+
 #include "calico.h"
 
 #include "AntiReplayWindow.hpp"
@@ -43,6 +45,15 @@ using namespace cat;
 
 #ifndef CAT_CHACHA_IMPL
 #define chacha_blocks_impl chacha_blocks_ref
+#endif
+
+// Debug output
+#ifdef CAT_VERBOSE_CALICO
+#include <iostream>
+using namespace std;
+#define CAT_LOG(x) x
+#else
+#define CAT_LOG(x)
 #endif
 
 // Using the internal chacha_blocks() function to speed up invalid message rejection
@@ -221,7 +232,7 @@ static bool check_auth(const char key[48], u64 iv, int shift,
 					const void *buffer, int bytes, u64 tag)
 {
 	// Generate expected MAC tag
-	const u64 expected_tag = siphash24(key + 32, buffer, bytes, iv);
+	const u64 expected_tag = siphash24(key + 32, buffer, bytes, iv) << shift;
 
 	// Verify MAC tag in constant-time
 	const u64 delta = (expected_tag ^ tag) >> shift;
@@ -296,6 +307,7 @@ int calico_key(void *S, int state_size, int role, const void *key, int key_bytes
 
 	// If input is invalid,
 	if (!m_initialized || !key || !state || key_bytes != 32) {
+		CAT_LOG(cout << "calico_key: Invalid input" << endl);
 		return -1;
 	}
 
@@ -303,15 +315,19 @@ int calico_key(void *S, int state_size, int role, const void *key, int key_bytes
 	bool datagram_supported;
 	if (state_size == sizeof(calico_state)) {
 		datagram_supported = true;
+		CAT_LOG(cout << "calico_key: Keying datagram mode" << endl);
 	} else if (state_size == sizeof(calico_stream_only)) {
 		datagram_supported = false;
+		CAT_LOG(cout << "calico_key: Keying stream mode" << endl);
 	} else {
 		// Invalid length
+		CAT_LOG(cout << "calico_key: Unsupported state size" << endl);
 		return -1;
 	}
 
 	// If role is invalid,
 	if (role != CALICO_INITIATOR && role != CALICO_RESPONDER) {
+		CAT_LOG(cout << "calico_key: Invalid role" << endl);
 		return -1;
 	}
 
@@ -327,6 +343,7 @@ int calico_key(void *S, int state_size, int role, const void *key, int key_bytes
 
 	// Expand key into two sets of two keys
 	if (!key_expand((const char *)key, keys, sizeof(keys))) {
+		CAT_LOG(cout << "calico_key: Unable to expand key" << endl);
 		return -1;
 	}
 
@@ -341,16 +358,22 @@ int calico_key(void *S, int state_size, int role, const void *key, int key_bytes
 
 	// Generate the next remote key
 	if (ratchet_key(state->stream.in_key[0], state->stream.in_key[1])) {
+		CAT_LOG(cout << "calico_key: Unable to ratchet stream key" << endl);
 		return -1;
 	}
 
 	// Mark when ratchet happened
 	const u32 msec = m_clock.msec();
 	state->stream.out.ratchet_time = msec;
+	state->stream.in.ratchet_time = 0;
+
+	// Set active keys
+	state->stream.in.active = 0;
+	state->stream.out.active = 0;
 
 	// Initialize the IV subsystem for streams
-	state->stream.out.iv = 0;
 	state->stream.in.iv = 0;
+	state->stream.out.iv = 0;
 
 	// If datagram transport is supported,
 	if (datagram_supported) {
@@ -360,21 +383,35 @@ int calico_key(void *S, int state_size, int role, const void *key, int key_bytes
 
 		// Generate the next remote key
 		if (ratchet_key(state->dgram.in_key[0], state->dgram.in_key[1])) {
+			CAT_LOG(cout << "calico_key: Unable to ratchet datagram key" << endl);
 			return -1;
 		}
 
+		// Set active keys
+		state->dgram.in.active = 0;
+		state->dgram.out.active = 0;
+
+		// Initialized the IV subsystem for datagrams
+		state->dgram.in.iv = 0;
+		state->dgram.out.iv = 0;
+		// Note that stream.in.iv is unused
+
 		// Set datagram ratchet time
 		state->dgram.out.ratchet_time = msec;
+		state->dgram.in.ratchet_time = 0;
 
 		// Initialize the IV subsystem for datagrams
 		antireplay_init(&state->window);
+
+		// Flag as keyed
+		state->flag = FLAG_KEYED_DATAGRAM;
+	} else {
+		// Flag as keyed
+		state->flag = FLAG_KEYED_STREAM;
 	}
 
 	// Erase temporary keys from memory
 	CAT_SECURE_OBJCLR(keys);
-
-	// Flag as keyed
-	state->flag = FLAG_KEYED_DATAGRAM;
 
 	return 0;
 }
@@ -390,6 +427,7 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 	// If input is invalid or Calico is not keyed,
 	if (!m_initialized || !state || !plaintext || !ciphertext || bytes < 0 ||
 		!overhead) {
+		CAT_LOG(cout << "calico_encrypt: Invalid input" << endl);
 		return -1;
 	}
 
@@ -400,10 +438,15 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 
 		// If state is not keyed for datagrams,
 		if (state->flag != FLAG_KEYED_DATAGRAM) {
+			CAT_LOG(cout << "calico_encrypt: Attempted to use unkeyed datagram mode" << endl);
 			return -1;
 		}
+
+		CAT_LOG(cout << "calico_encrypt: Encrypting in datagram mode" << endl);
 	} else if (overhead_size == CALICO_STREAM_OVERHEAD) {
 		key = &state->stream;
+
+		CAT_LOG(cout << "calico_encrypt: Encrypting in stream mode" << endl);
 	} else {
 		// Invalid input
 		return -1;
@@ -414,6 +457,7 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 
 	// If out of IVs,
 	if (iv == 0xffffffffffffffffULL) {
+		CAT_LOG(cout << "calico_encrypt: Refusing to continue encrypting after ran out of IVs" << endl);
 		return -1;
 	}
 
@@ -422,6 +466,8 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 		// If it is time to ratchet the key again,
 		if (key->out.active == key->in.active &&
 			(u32)(m_clock.msec() - key->out.ratchet_time) > RATCHET_PERIOD) {
+			CAT_LOG(cout << "calico_encrypt: Ratcheting key" << endl);
+
 			// Flip the active key bit
 			key->out.active ^= 1;
 
@@ -439,13 +485,15 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 	u64 tag = auth_encrypt(key->out_key, iv, plaintext, ciphertext, bytes);
 
 	if (overhead_size == CALICO_DATAGRAM_OVERHEAD) {
+		CAT_LOG(cout << "calico_encrypt: Encrypting datagram with IV = " << iv << " and ratchet = " << key->out.active << endl);
+
 		// Obfuscate the truncated IV
 		u32 trunc_iv = ((u32)iv << 1) | key->out.active;
 		trunc_iv -= (u32)tag;
 		trunc_iv ^= AD_FUZZ;
 
-		u8 *overhead_iv = reinterpret_cast<u8 *>( overhead );
-		u64 *overhead_tag = reinterpret_cast<u64 *>( overhead_iv + 3 );
+		u64 *overhead_tag = reinterpret_cast<u64 *>( overhead );
+		u8 *overhead_iv = reinterpret_cast<u8 *>( overhead_tag + 1 );
 
 		// Store IV and tag
 		overhead_iv[0] = (u8)trunc_iv;
@@ -453,6 +501,8 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 		overhead_iv[2] = (u8)(trunc_iv >> 8);
 		*overhead_tag = getLE(tag);
 	} else {
+		CAT_LOG(cout << "calico_encrypt: Encrypting stream with IV = " << iv << " and ratchet = " << key->out.active << endl);
+
 		// Attach active key bit to tag field
 		tag = (tag << 1) | key->out.active;
 
@@ -475,6 +525,7 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 
 	// If input is invalid or Calico object is not keyed,
 	if (!m_initialized || !state || !ciphertext || !overhead || bytes < 0) {
+		CAT_LOG(cout << "calico_decrypt: Invalid input" << endl);
 		return -1;
 	}
 
@@ -485,12 +536,16 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 
 		// If state is not keyed for datagrams,
 		if (state->flag != FLAG_KEYED_DATAGRAM) {
+			CAT_LOG(cout << "calico_decrypt: Datagram decryption requested but not keyed" << endl);
 			return -1;
 		}
+		CAT_LOG(cout << "calico_decrypt: Decrypting datagram of bytes = " << bytes << endl);
 	} else if (overhead_size == CALICO_STREAM_OVERHEAD) {
 		key = &state->stream;
+		CAT_LOG(cout << "calico_decrypt: Decrypting stream of bytes = " << bytes << endl);
 	} else {
 		// Invalid input
+		CAT_LOG(cout << "calico_decrypt: Invalid overhead size specified" << endl);
 		return -1;
 	}
 
@@ -527,8 +582,11 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 		// Reconstruct the full IV counter
 		iv = ReconstructCounter<IV_BITS>(state->window.newest_iv, trunc_iv);
 
+		CAT_LOG(cout << "calico_decrypt: Decrypting datagram with IV = " << iv << " and ratchet = " << ratchet_bit << endl);
+
 		// Validate IV
 		if (!antireplay_check(&state->window, iv)) {
+			CAT_LOG(cout << "calico_decrypt: IV was replayed or too old" << endl);
 			return -1;
 		}
 
@@ -541,6 +599,8 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 		// Extract the ratchet bit
 		ratchet_bit = tag & 1;
 
+		CAT_LOG(cout << "calico_decrypt: Decrypting stream with IV = " << iv << " and ratchet = " << ratchet_bit << endl);
+
 		// Shift out the low bit during authentication
 		auth_shift = 1;
 	}
@@ -550,6 +610,7 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 
 	// Authenticate the message
 	if (!check_auth(dec_key, iv, auth_shift, ciphertext, bytes, tag)) {
+		CAT_LOG(cout << "calico_decrypt: Message authentication failed" << endl);
 		return -1;
 	}
 
@@ -577,6 +638,8 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 
 	// Accept this IV
 	antireplay_accept(&state->window, iv);
+
+	CAT_LOG(cout << "calico_decrypt: Message decrypted successfully" << endl);
 
 	return 0;
 }

@@ -44,7 +44,7 @@ int main()
 	// UDP example:
 
 	// Encrypt the message into the packet
-	assert(!calico_encrypt(&initiator, packet, message, message_length, overhead, sizeof(overhead)));
+	assert(!calico_encrypt(&initiator, packet, message, message_length, overhead, CALICO_DATAGRAM_OVERHEAD));
 
 	int packet_length = message_length + CALICO_DATAGRAM_OVERHEAD;
 
@@ -57,7 +57,7 @@ int main()
 	assert(decoded_message_length >= 0);
 
 	// Decrypt the message from the packet
-	assert(!calico_decrypt(&responder, packet, decoded_message_length, overhead, sizeof(overhead)));
+	assert(!calico_decrypt(&responder, packet, decoded_message_length, overhead, CALICO_DATAGRAM_OVERHEAD));
 
 	// The decrypted message size should match the original message size
 	assert(decoded_message_length == message_length);
@@ -75,7 +75,7 @@ int main()
 	char *packet_msg = packet + sizeof(int) + CALICO_STREAM_OVERHEAD;
 
 	// Encrypt the message into the packet, adding some overhead (8 bytes)
-	assert(!calico_encrypt(&initiator, packet_msg, message, message_length, overhead, sizeof(overhead)));
+	assert(!calico_encrypt(&initiator, packet_msg, message, message_length, overhead, CALICO_STREAM_OVERHEAD));
 
 
 	// <-- Pretend that right here we sent the TCP message over the Internet.
@@ -91,7 +91,7 @@ int main()
 	packet_msg = packet + sizeof(int) + CALICO_STREAM_OVERHEAD;
 
 	// Decrypt the message from the packet
-	assert(!calico_decrypt(&responder, packet_msg, decoded_message_length, overhead, sizeof(overhead)));
+	assert(!calico_decrypt(&responder, packet_msg, decoded_message_length, overhead, CALICO_STREAM_OVERHEAD));
 
 	// And the decrypted message contents will match the original message
 	assert(!memcmp(message, packet_msg, message_length));
