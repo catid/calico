@@ -4,7 +4,8 @@
 The Calico authenticated encryption library is designed to protect data sent
 between two endpoints on an untrusted network.  It provides protection against
 tampering of the data through replay or modification.  Calico encrypts the
-data so that it cannot be read by a third party.  Calico runs in constant-time
+data so that it cannot be read by a third party.  To protect long-established
+connections, Calico periodically rekeys both sides.  Calico runs in constant-time
 to avoid side-channel attacks through execution timing or cache timing.
 
 The Calico library can encrypt single packets or streams of data, so that it
@@ -15,7 +16,7 @@ rejects invalid messages as quickly as possible -- roughly 2x faster than
 normal decryption.
 
 Calico implements Authenticated Encryption with Associated Data (AEAD) using
-a similar construction Langley's proposal [4] for using ChaCha20 with Poly1305
+a similar construction to Langley's proposal [4] for using ChaCha20 with Poly1305
 for AEAD in TLS.  The main difference is that the simpler SipHash-2-4 MAC [5] is
 used for higher speed in place of Poly1305.
 
