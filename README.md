@@ -1,4 +1,4 @@
-# Calico
+# Calico Version 7
 #### Strong, Fast, and Portable Authenticated Encryption
 
 The Calico authenticated encryption library is designed to protect data sent
