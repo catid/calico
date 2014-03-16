@@ -26,6 +26,23 @@ also does not open any sockets for you - It only encodes and decodes the data.
 Calico does not consume any randomness to operate.
 
 
+## News
+
+I recently submitted the Calico construction to the [CAESAR competition committee](http://competitions.cr.yp.to/caesar-committee.html) with the intention of bringing more attention to the advantages of low overhead, forward secrecy, IV truncation, and tweaked SipHash developments provided by this library.
+
+The version presented in [my submission](https://github.com/catid/calico/raw/master/docs/calicoaead.pdf) is "Version 8", which includes some features that are currently planned to go into Calico despite my lack of time (demonstrated by the two all-nighters I spent this week on a different project):
+
++ change signalling for stream mode to avoid unnecessary use of delay/timers
++ allow for authenticated data in addition to the message data
++ optimize memory usage instead of leaving a few unused variables for simplicity
++ use Krovetz version for ChaCha on ARM to use NEON instructions
++ provide IV to user to enable dual-use for measuring packetloss
+
+There are going to be a lot of amazing designs in the competition and I doubt that my own will last very long, but the writeup was enjoyable.  It also gave me renewed appreciation for the amount of effort that goes into a good whitepaper on cryptographic topics.
+
+-Chris
+
+
 ## Benchmarks
 
 ##### libcalico.a on iMac (2.7 GHz Core i5-2500S Sandy Bridge, June 2011):
@@ -508,4 +525,3 @@ find it useful and would like to buy me a coffee, consider [tipping](https://www
 
 Thanks to Sam Hughes ( sam@rethinkdb.com ) for fixing an integer overflow vulnerability in an
 early version of the software.
-
