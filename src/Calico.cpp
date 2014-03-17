@@ -550,6 +550,10 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 		return -1;
 	}
 
+	u32 ratchet_bit;
+	u64 iv, tag;
+	int auth_shift;
+
 	// Select key
 	Key *key;
 	if (overhead_size == CALICO_DATAGRAM_OVERHEAD) {
@@ -567,26 +571,12 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 			// Handle ratchet update
 			delayed_dgram_ratchet(state);
 		}
-	} else if (overhead_size == CALICO_STREAM_OVERHEAD) {
-		key = &state->stream;
-		CAT_LOG(cout << "calico_decrypt: Decrypting stream of bytes = " << bytes << endl);
-	} else {
-		// Invalid input
-		CAT_LOG(cout << "calico_decrypt: Invalid overhead size specified" << endl);
-		return -1;
-	}
 
-	const u64 *overhead_tag = reinterpret_cast<const u64 *>( overhead );
-
-	// Grab the MAC tag
-	const u64 tag = getLE(*overhead_tag);
-
-	u32 ratchet_bit;
-	u64 iv;
-	int auth_shift;
-
-	if (overhead_size == CALICO_DATAGRAM_OVERHEAD) {
+		const u64 *overhead_tag = reinterpret_cast<const u64 *>( overhead );
 		const u8 *overhead_iv = reinterpret_cast<const u8 *>( overhead_tag + 1 );
+
+		// Grab the MAC tag
+		tag = getLE(*overhead_tag);
 
 		// Grab the obfuscated IV
 		u32 trunc_iv = ((u32)overhead_iv[2] << 8) | ((u32)overhead_iv[1] << 16) | (u32)overhead_iv[0];
@@ -613,9 +603,17 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 
 		// Full 64 bits are used for MAC tag
 		auth_shift = 0;
-	} else {
+	} else if (overhead_size == CALICO_STREAM_OVERHEAD) {
+		key = &state->stream;
+		CAT_LOG(cout << "calico_decrypt: Decrypting stream of bytes = " << bytes << endl);
+
 		// Extract the IV
 		iv = key->in.iv;
+
+		const u64 *overhead_tag = reinterpret_cast<const u64 *>( overhead );
+
+		// Grab the MAC tag
+		tag = getLE(*overhead_tag);
 
 		// Extract the ratchet bit
 		ratchet_bit = (u32)tag & 1;
@@ -624,6 +622,10 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 
 		// Shift out the low bit during authentication
 		auth_shift = 1;
+	} else {
+		// Invalid input
+		CAT_LOG(cout << "calico_decrypt: Invalid overhead size specified" << endl);
+		return -1;
 	}
 
 	// Get deccryption/MAC key
@@ -639,7 +641,7 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 
 	// If the ratchet bit is not the active key,
 	if (ratchet_bit ^ key->in.active) {
-		// If not already ratcheting,
+		// If it makes sense to ratchet the keys now,
 		if (overhead_size == CALICO_STREAM_OVERHEAD ||
 			!state->dgram_in_ratchet_time)
 		{
@@ -655,13 +657,13 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 
 				 // This will immediately ratchet in Stream mode
 				 key->in.active = ratchet_bit;
-
 			}
 
 			// If responder,
 			if (state->role == CALICO_RESPONDER) {
+				// This is the responder's trigger to ratchet the encryption key.
+
 				CAT_LOG(cout << "calico_decrypt: Ratcheting key since this is the responder" << endl);
-				// This is our trigger to ratchet our encryption key.
 
 				// Ratchet to next key, erasing the old key
 				if (ratchet_key(key->out_key, key->out_key)) {
