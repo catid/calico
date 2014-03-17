@@ -39,7 +39,7 @@
 extern "C" {
 #endif
 
-#define CALICO_VERSION 7
+#define CALICO_VERSION 8
 
 /*
  * Verify binary compatibility with the Calico API on startup.
@@ -58,11 +58,11 @@ extern int _calico_init(int expected_version);
 
 
 typedef struct {
-	char internal[8 + 176 + 8];
+	char internal[192];
 } calico_stream_only;
 
 typedef struct {
-	char internal[8 + 176 + 8 + 176 + 136];
+	char internal[520];
 } calico_state;
 
 

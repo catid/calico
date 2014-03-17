@@ -47,6 +47,8 @@ using namespace cat;
 #define chacha_blocks_impl chacha_blocks_ref
 #endif
 
+#define CAT_VERBOSE_CALICO
+
 // Debug output
 #ifdef CAT_VERBOSE_CALICO
 #include <iostream>
@@ -76,14 +78,14 @@ static const int KEY_BYTES = 32 + 16;
 
 // One-way key information
 struct HalfDuplexKey {
+	// Next IV
+	// NOTE: This is unused for datagram decryption
+	u64 iv;
+
 	// This is either 0 or 1 to indicate which of the two incoming
 	// keys is "active"; the other key is "inactive" and will be
 	// set to H(K_active)
 	u32 active;
-
-	// Next IV
-	// NOTE: This is unused for datagram decryption
-	u64 iv;
 };
 
 struct Key {
@@ -94,6 +96,9 @@ struct Key {
 	char in_key[2][KEY_BYTES];
 
 	HalfDuplexKey in, out;
+
+	// Set to last time ratchet occurred on the Initiator
+	u32 out_ratchet_time;
 };
 
 #ifndef RATCHET_REMOTE_TIMEOUT
@@ -132,9 +137,6 @@ struct InternalState {
 	// This is the millisecond timestamp when incoming ratcheting started.
 	// Otherwise it is set to 0 when ratcheting is not in progress
 	u32 dgram_in_ratchet_time;
-
-	// Set to last time ratchet occurred on the Initiator
-	u32 dgram_out_ratchet_time;
 };
 
 // Flag to indicate that the library has been initialized with calico_init()
@@ -199,8 +201,8 @@ static u64 auth_encrypt(const char key[48], u64 iv_raw, const void *from,
 	return siphash24(key + 32, to, bytes, iv);
 }
 
-// Helper function to conditionally perform key ratchet on receiver side
-static void handle_ratchet(InternalState *state) {
+// Helper function to conditionally perform key ratchet on dgram receiver side
+static void delayed_dgram_ratchet(InternalState *state) {
 	// If ratchet time exceeded,
 	if ((u32)(m_clock.msec() - state->dgram_in_ratchet_time) > RATCHET_REMOTE_TIMEOUT) {
 		Key *key = &state->dgram;
@@ -282,9 +284,11 @@ int _calico_init(int expected_version)
 
 	// If internal state is larger than opaque object,
 	if (sizeof(InternalState) > sizeof(calico_state)) {
+		CAT_LOG(cout << "calico_init: Calico state object is too small, should be " << sizeof(InternalState) << " bytes" << endl);
 		return -1;
 	}
 	if (offsetof(InternalState, dgram) > sizeof(calico_stream_only)) {
+		CAT_LOG(cout << "calico_init: Calico stream-only state object is too small, should be " << offsetof(InternalState, dgram) << " bytes" << endl);
 		return -1;
 	}
 
@@ -375,8 +379,7 @@ int calico_key(void *S, int state_size, int role, const void *key, int key_bytes
 
 	// Mark when ratchet happened
 	const u32 msec = m_clock.msec();
-	state->dgram_out_ratchet_time = msec; // Only used by initiator
-	state->dgram_in_ratchet_time = 0;
+	state->stream.out_ratchet_time = msec; // Only used by initiator
 
 	// Set active keys
 	state->stream.in.active = 0;
@@ -408,7 +411,7 @@ int calico_key(void *S, int state_size, int role, const void *key, int key_bytes
 		// Note that stream.in.iv is unused
 
 		// Set datagram ratchet time
-		state->dgram_out_ratchet_time = msec; // Only used by initiator
+		state->dgram.out_ratchet_time = msec; // Only used by initiator
 		state->dgram_in_ratchet_time = 0;
 
 		// Initialize the IV subsystem for datagrams
@@ -478,7 +481,7 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 		if (key->out.active == key->in.active) {
 			const u32 msec = m_clock.msec();
 
-			if ((u32)(msec - state->dgram_out_ratchet_time) > RATCHET_PERIOD) {
+			if ((u32)(msec - key->out_ratchet_time) > RATCHET_PERIOD) {
 				CAT_LOG(cout << "calico_encrypt: Ratcheting key" << endl);
 
 				// Ratchet to next key, erasing the old key
@@ -491,7 +494,7 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 				key->out.active ^= 1;
 
 				// Update base ratchet time to add another delay
-				state->dgram_out_ratchet_time = msec;
+				key->out_ratchet_time = msec;
 			}
 		}
 	}
@@ -562,7 +565,7 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 		// If ratcheting is happening already,
 		if (state->dgram_in_ratchet_time) {
 			// Handle ratchet update
-			handle_ratchet(state);
+			delayed_dgram_ratchet(state);
 		}
 	} else if (overhead_size == CALICO_STREAM_OVERHEAD) {
 		key = &state->stream;
@@ -638,7 +641,8 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 	if (ratchet_bit ^ key->in.active) {
 		// If not already ratcheting,
 		if (overhead_size == CALICO_STREAM_OVERHEAD ||
-			!state->dgram_in_ratchet_time) {
+			!state->dgram_in_ratchet_time)
+		{
 			CAT_LOG(cout << "calico_decrypt: Detected a key ratchet from remote host" << endl);
 
 			// If datagram,
