@@ -57,7 +57,7 @@ int main()
 	assert(decoded_message_length >= 0);
 
 	// Decrypt the message from the packet
-	assert(!calico_decrypt(&responder, packet, decoded_message_length, overhead, CALICO_DATAGRAM_OVERHEAD));
+	assert(!calico_decrypt(&responder, packet, decoded_message_length, overhead, CALICO_DATAGRAM_OVERHEAD, 0));
 
 	// The decrypted message size should match the original message size
 	assert(decoded_message_length == message_length);
@@ -91,7 +91,7 @@ int main()
 	packet_msg = packet + sizeof(int) + CALICO_STREAM_OVERHEAD;
 
 	// Decrypt the message from the packet
-	assert(!calico_decrypt(&responder, packet_msg, decoded_message_length, overhead, CALICO_STREAM_OVERHEAD));
+	assert(!calico_decrypt(&responder, packet_msg, decoded_message_length, overhead, CALICO_STREAM_OVERHEAD, 0));
 
 	// And the decrypted message contents will match the original message
 	assert(!memcmp(message, packet_msg, message_length));

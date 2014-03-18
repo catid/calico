@@ -53,8 +53,8 @@ extern "C" {
  * Returns 0 on success.
  * Returns non-zero if the API level does not match.
  */
-extern int _calico_init(int expected_version);
-#define calico_init() _calico_init(CALICO_VERSION)
+extern int _calico_init(int expected_version, int sizeof_int);
+#define calico_init() _calico_init(CALICO_VERSION, sizeof(int))
 
 
 typedef struct {
@@ -142,11 +142,15 @@ extern int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int 
  *
  * The ciphertext is decrypted in-place.
  *
+ * The low 32 bits of the Seq# are optionally returned if iv is not null, which
+ * is useful for UDP-based protocols to passively measure packetloss since the
+ * Seq# is incremented by one for each message.  It can roll over back to zero.
+ *
  * Returns 0 on success.
  * Returns non-zero if one of the input parameters is invalid.
  * It is important to check the return value to avoid active attacks.
  */
-extern int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead, int overhead_size);
+extern int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead, int overhead_size, unsigned int *seq);
 
 /*
  * Clean up a calico_state or calico_stream_only object

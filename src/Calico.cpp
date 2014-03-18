@@ -275,10 +275,15 @@ static void decrypt(const u64 iv_raw, const char key[48], void *buffer, int byte
 extern "C" {
 #endif
 
-int _calico_init(int expected_version)
+int _calico_init(int expected_version, int sizeof_int)
 {
 	// If version does not match,
 	if (CALICO_VERSION != expected_version) {
+		return -1;
+	}
+
+	if (sizeof(int) != sizeof_int) {
+		CAT_LOG(cout << "calico_init: Int size mismatch " << sizeof_int << endl);
 		return -1;
 	}
 
@@ -540,7 +545,7 @@ int calico_encrypt(void *S, void *ciphertext, const void *plaintext, int bytes,
 //// Decryption
 
 int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
-					int overhead_size)
+					int overhead_size, unsigned int *seq)
 {
 	InternalState *state = reinterpret_cast<InternalState *>( S );
 
@@ -684,6 +689,13 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 	} else {
 		// Update IV
 		key->in.iv = iv + 1;
+	}
+
+	// If sequence number requested,
+	if (seq) {
+		// Just provide the low 32 bits.  In practice only the low 16-22 bits
+		// are really needed for packetloss estimates.
+		*seq = (u32)iv;
 	}
 
 	CAT_LOG(cout << "calico_decrypt: Message decrypted successfully" << endl);

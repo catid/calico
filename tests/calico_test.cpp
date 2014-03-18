@@ -30,7 +30,7 @@ void UninitializedTest() {
 	assert(calico_encrypt(&S, data, data, bytes, overhead, sizeof(overhead)));
 
 	// Assert that the decryption function fails if it is unkeyed
-	assert(calico_decrypt(&S, data, bytes, overhead, sizeof(overhead)));
+	assert(calico_decrypt(&S, data, bytes, overhead, sizeof(overhead), 0));
 }
 
 /*
@@ -65,7 +65,7 @@ void DataIntegrityTest() {
 			enc_data[len] = 'A';
 
 			assert(!calico_encrypt(&c, enc_data, orig_data, len, overhead, sizeof(overhead)));
-			assert(!calico_decrypt(&s, enc_data, len, overhead, sizeof(overhead)));
+			assert(!calico_decrypt(&s, enc_data, len, overhead, sizeof(overhead), 0));
 
 			assert(SecureEqual(enc_data, orig_data, len));
 
@@ -111,8 +111,8 @@ void StreamModeTest() {
 			assert(!calico_encrypt(&x, data, orig, len, overhead, sizeof(overhead)));
 			assert(calico_encrypt((calico_state*)&x, data, orig, len, overhead, CALICO_DATAGRAM_OVERHEAD));
 
-			assert(calico_decrypt(&y, data, len, overhead, CALICO_DATAGRAM_OVERHEAD));
-			assert(!calico_decrypt(&y, data, len, overhead, sizeof(overhead)));
+			assert(calico_decrypt(&y, data, len, overhead, CALICO_DATAGRAM_OVERHEAD, 0));
+			assert(!calico_decrypt(&y, data, len, overhead, sizeof(overhead), 0));
 			assert(SecureEqual(data, orig, len));
 
 			// Send y -> x
@@ -126,8 +126,8 @@ void StreamModeTest() {
 			assert(!calico_encrypt(&y, data, orig, len, overhead, sizeof(overhead)));
 			assert(calico_encrypt((calico_state*)&y, data, orig, len, overhead, CALICO_DATAGRAM_OVERHEAD));
 
-			assert(calico_decrypt(&x, data, len, overhead, CALICO_DATAGRAM_OVERHEAD));
-			assert(!calico_decrypt(&x, data, len, overhead, sizeof(overhead)));
+			assert(calico_decrypt(&x, data, len, overhead, CALICO_DATAGRAM_OVERHEAD, 0));
+			assert(!calico_decrypt(&x, data, len, overhead, sizeof(overhead), 0));
 
 			assert(SecureEqual(data, orig, len));
 		}
@@ -150,11 +150,11 @@ void WrongKeyTest() {
 
 	// Verify that it cannot be decrypted when the wrong key is used
 	assert(!calico_key(&y, sizeof(y), CALICO_RESPONDER, ykey, sizeof(ykey)));
-	assert(calico_decrypt(&y, data, 32, overhead, sizeof(overhead)));
+	assert(calico_decrypt(&y, data, 32, overhead, sizeof(overhead), 0));
 
 	// Verify that it can be decrypted when the right key is used
 	assert(!calico_key(&y, sizeof(y), CALICO_RESPONDER, xkey, sizeof(xkey)));
-	assert(!calico_decrypt(&y, data, 32, overhead, sizeof(overhead)));
+	assert(!calico_decrypt(&y, data, 32, overhead, sizeof(overhead), 0));
 }
 
 /*
@@ -172,7 +172,7 @@ void ReplayAttackTest() {
 
 	assert(!calico_encrypt(&x, data, data, 32, overhead, sizeof(overhead)));
 
-	assert(!calico_decrypt(&y, data, 32, overhead, sizeof(overhead)));
+	assert(!calico_decrypt(&y, data, 32, overhead, sizeof(overhead), 0));
 
 	// Re-use IV 0
 
@@ -181,13 +181,13 @@ void ReplayAttackTest() {
 	assert(!calico_encrypt(&x, data, data, 32, overhead, sizeof(overhead)));
 
 	// Decryption should fail here since IV was reused
-	assert(calico_decrypt(&y, data, 32, overhead, sizeof(overhead)));
+	assert(calico_decrypt(&y, data, 32, overhead, sizeof(overhead), 0));
 
 	// Continue with IV 1
 
 	assert(!calico_encrypt(&x, data, data, 32, overhead, sizeof(overhead)));
 
-	assert(!calico_decrypt(&y, data, 32, overhead, sizeof(overhead)));
+	assert(!calico_decrypt(&y, data, 32, overhead, sizeof(overhead), 0));
 }
 
 /*
@@ -210,7 +210,7 @@ void ReplayWindowTest() {
 	}
 
 	// Deliver the last one
-	assert(!calico_decrypt(&y, data, 32, overhead, sizeof(overhead)));
+	assert(!calico_decrypt(&y, data, 32, overhead, sizeof(overhead), 0));
 
 	// Now replay them all
 
@@ -220,13 +220,13 @@ void ReplayWindowTest() {
 		assert(!calico_encrypt(&x, data, data, 32, overhead, sizeof(overhead)));
 
 		// Verify IV drop
-		assert(calico_decrypt(&y, data, 32, overhead, sizeof(overhead)));
+		assert(calico_decrypt(&y, data, 32, overhead, sizeof(overhead), 0));
 	}
 
 	for (int ii = 1024; ii < 2047; ++ii) {
 		assert(!calico_encrypt(&x, data, data, 32, overhead, sizeof(overhead)));
 
-		assert(!calico_decrypt(&y, data, 32, overhead, sizeof(overhead)));
+		assert(!calico_decrypt(&y, data, 32, overhead, sizeof(overhead), 0));
 	}
 
 	// Test replay of original packet
@@ -234,14 +234,14 @@ void ReplayWindowTest() {
 	assert(!calico_encrypt(&x, data, data, 32, overhead, sizeof(overhead)));
 
 	// Verify that replay is dropped
-	assert(calico_decrypt(&y, data, 32, overhead, sizeof(overhead)));
+	assert(calico_decrypt(&y, data, 32, overhead, sizeof(overhead), 0));
 
 	// Test some forward movement
 
 	for (int ii = 0; ii < 1024; ++ii) {
 		assert(!calico_encrypt(&x, data, data, 32, overhead, sizeof(overhead)));
 
-		assert(!calico_decrypt(&y, data, 32, overhead, sizeof(overhead)));
+		assert(!calico_decrypt(&y, data, 32, overhead, sizeof(overhead), 0));
 	}
 }
 
@@ -323,7 +323,7 @@ void BenchmarkDecryptFail() {
 		double t0 = m_clock.usec();
 
 		for (int ii = 0; ii < 100000; ++ii) {
-			assert(calico_decrypt(&y, data, bytes, overhead, sizeof(overhead)));
+			assert(calico_decrypt(&y, data, bytes, overhead, sizeof(overhead), 0));
 		}
 
 		double t1 = m_clock.usec();
@@ -368,7 +368,7 @@ void BenchmarkDecryptSuccess() {
 
 			double t0 = m_clock.usec();
 
-			assert(!calico_decrypt(&y, data, bytes, overhead, sizeof(overhead)));
+			assert(!calico_decrypt(&y, data, bytes, overhead, sizeof(overhead), 0));
 
 			double t1 = m_clock.usec();
 
@@ -413,13 +413,13 @@ void ReplayMACTest() {
 	assert(!calico_encrypt(&x, data_iv1, data_iv1, 32, overhead_iv1, sizeof(overhead_iv1)));
 
 	memcpy(plaintext, data_iv0, 32);
-	assert(!calico_decrypt(&y, plaintext, 32, overhead_iv0, sizeof(overhead_iv0)));
+	assert(!calico_decrypt(&y, plaintext, 32, overhead_iv0, sizeof(overhead_iv0), 0));
 
 	// Use IV = 1, but keep the MAC the same as for IV = 0
 
 	memcpy(overhead_iv_mod, overhead_iv0, sizeof(overhead_iv_mod));
 
-	assert(calico_decrypt(&y, data_iv0, 32, overhead_iv_mod, sizeof(overhead_iv_mod)));
+	assert(calico_decrypt(&y, data_iv0, 32, overhead_iv_mod, sizeof(overhead_iv_mod), 0));
 }
 
 /*
@@ -450,7 +450,7 @@ void RatchetKeyTest() {
 		Clock::sleep(137);
 
 		cout << "-- server receiving" << endl;
-		assert(!calico_decrypt(&y, c2s_data, 32, c2s_over, sizeof(c2s_over)));
+		assert(!calico_decrypt(&y, c2s_data, 32, c2s_over, sizeof(c2s_over), 0));
 		assert(SecureEqual(c2s_data, orig, sizeof(c2s_data)));
 
 		cout << "- s2c transmit" << endl;
@@ -459,7 +459,7 @@ void RatchetKeyTest() {
 		Clock::sleep(122);
 
 		cout << "-- client receiving" << endl;
-		assert(!calico_decrypt(&x, s2c_data, 32, s2c_over, sizeof(s2c_over)));
+		assert(!calico_decrypt(&x, s2c_data, 32, s2c_over, sizeof(s2c_over), 0));
 		assert(SecureEqual(s2c_data, orig, sizeof(s2c_data)));
 
 		Clock::sleep(15);
@@ -504,7 +504,7 @@ void StressTest() {
 
 			// Add 5% packetloss
 			if (prng.Next() % 100 >= 5) {
-				assert(!calico_decrypt(&y, data, len, overhead, sizeof(overhead)));
+				assert(!calico_decrypt(&y, data, len, overhead, sizeof(overhead), 0));
 				assert(SecureEqual(data, orig, len));
 			}
 
@@ -520,7 +520,7 @@ void StressTest() {
 
 			// Add 5% packetloss
 			if (prng.Next() % 100 >= 5) {
-				assert(!calico_decrypt(&x, data, len, overhead, sizeof(overhead)));
+				assert(!calico_decrypt(&x, data, len, overhead, sizeof(overhead), 0));
 				assert(SecureEqual(data, orig, len));
 			}
 		}
