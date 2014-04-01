@@ -271,9 +271,9 @@ static void decrypt(const u64 iv_raw, const char key[48], void *buffer, int byte
 }
 
 
-#ifdef __cplusplus
+//// C API
+
 extern "C" {
-#endif
 
 int _calico_init(int expected_version, int sizeof_int)
 {
@@ -703,7 +703,5 @@ int calico_decrypt(void *S, void *ciphertext, int bytes, const void *overhead,
 	return 0;
 }
 
-#ifdef __cplusplus
-}
-#endif
+} // extern "C"
 
