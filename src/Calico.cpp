@@ -47,7 +47,7 @@ using namespace cat;
 #define chacha_blocks_impl chacha_blocks_ref
 #endif
 
-#define CAT_VERBOSE_CALICO
+//#define CAT_VERBOSE_CALICO
 
 // Debug output
 #ifdef CAT_VERBOSE_CALICO
